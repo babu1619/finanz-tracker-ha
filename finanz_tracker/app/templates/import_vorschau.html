@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Import-Vorschau{% endblock %}
+{% block inhalt %}
+<div class="kopf"><h1>Vorschau</h1><span class="leise">{{ dateiname }} · Konto <b>{{ konto.name }}</b> · Profil {{ vorb.profil.name }}</span></div>
+<div class="kpis">
+  <div class="kpi"><div class="label">neue Buchungen</div><div class="wert pos">{{ vorb.neu }}</div></div>
+  <div class="kpi"><div class="label">schon vorhanden</div><div class="wert">{{ vorb.doppelt }}</div><div class="unter">werden übersprungen</div></div>
+  <div class="kpi"><div class="label">nicht lesbar</div><div class="wert" style="{{ 'color:#8A1F18' if vorb.fehler }}">{{ vorb.fehler|length }}</div><div class="unter">werden nicht importiert</div></div>
+</div>
+{% for h in vorb.hinweise %}<div class="flash warn">{{ h }}</div>{% endfor %}
+{% if vorb.fehler %}
+<section class="karte"><h2>Nicht lesbare Zeilen</h2>
+  <ul style="margin:0;padding-left:18px">{% for f in vorb.fehler[:20] %}<li>Zeile {{ f.zeile }}: {{ f.fehler }} <span class="leise mono klein">{{ f.roh|join(' ; ')|truncate(120) }}</span></li>{% endfor %}</ul>
+  <p class="leise klein">Passt etwas grundsätzlich nicht, die <a href="{{ url_for('importe.profil', pid=vorb.profil.id) }}">Spaltenzuordnung im Profil</a> prüfen.</p></section>
+{% endif %}
+<section class="karte ohne-rand">
+  <div class="scroll"><table class="tab" style="min-width:760px">
+    <thead><tr><th>Status</th><th>Datum</th><th>Gegenpartei · Verwendungszweck</th><th style="text-align:right">Betrag</th><th style="text-align:right">Saldo</th></tr></thead>
+    <tbody>{% for z in vorb.zeilen[:300] %}
+      <tr style="{{ 'opacity:.55' if z.status == 'doppelt' }}">
+        <td><span class="tag {{ 'ok' if z.status == 'neu' }}">{{ z.status }}</span></td>
+        <td class="mono" style="font-size:13px;white-space:nowrap">{{ z.buchungsdatum.strftime('%d.%m.%Y') }}</td>
+        <td><b>{{ z.gegenpartei or '–' }}</b><div class="leise">{{ z.verwendungszweck|truncate(100) }}</div></td>
+        <td class="betrag {{ 'pos' if z.betrag_cent > 0 }}">{{ z.betrag_cent|euro_vz }}</td>
+        <td class="betrag leise" style="font-weight:400">{{ z.saldo_cent|euro if z.saldo_cent is not none else '' }}</td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  {% if vorb.zeilen|length > 300 %}<p class="leise" style="padding:0 18px">… und {{ vorb.zeilen|length - 300 }} weitere</p>{% endif %}
+</section>
+<div class="karte formreihe" style="align-items:center">
+  <span style="flex:1 1 300px" class="leise">Nach dem Übernehmen laufen Regeln, Zuordnung aus früheren Buchungen und Umbuchungserkennung. Der Import lässt sich vollständig rückgängig machen.</span>
+  <form method="post" action="{{ url_for('importe.abbrechen', token=vorb.token) }}">{{ csrf() }}<button class="btn gross" type="submit">Abbrechen</button></form>
+  <form method="post" action="{{ url_for('importe.uebernehmen', token=vorb.token) }}">{{ csrf() }}<button class="btn primaer gross" type="submit" {{ 'disabled' if not vorb.neu }}>{{ vorb.neu }} Buchungen übernehmen</button></form>
+</div>
+{% endblock %}

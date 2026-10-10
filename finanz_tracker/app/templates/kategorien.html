@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_select with context %}
+{% block titel %}Kategorien{% endblock %}
+{% block inhalt %}
+<div class="kopf">
+  <h1>Kategorien</h1>
+  <span class="leise">Beliebig tief · Summen {{ monat|monat }} inklusive Unterkategorien</span>
+</div>
+<div class="reihe">
+  <section class="karte breit baum" style="padding:10px 8px">
+    {% for k in kategorien %}
+    <a class="zeile" href="{{ url_for('kategorien.bearbeiten', kid=k.id) if darf_schreiben else url_for('buchungen.liste', kategorie=k.id, monat=monat) }}">
+      <span class="einr" style="width: {{ k.ebene * 22 }}px"></span>
+      <span class="n ebene{{ k.ebene }}">{{ k.name }}{% if k.art %} <span class="tag {{ 'ok' if k.art == 'einnahme' else 'info' if k.art == 'umbuchung' else '' }}">{{ k.art }}</span>{% endif %}</span>
+      <span class="leise klein">{{ anzahl.get(k.id, 0) }} Buchungen</span>
+      <span class="mono" style="width:110px;text-align:right">{{ summen.get(k.id)|euro if summen.get(k.id) else '' }}</span>
+    </a>
+    {% else %}<p class="leer">Noch keine Kategorien.</p>{% endfor %}
+  </section>
+  {% if darf_schreiben %}
+  <form method="post" action="{{ url_for('kategorien.neu') }}" class="karte schmal" style="display:flex;flex-direction:column;gap:12px">
+    {{ csrf() }}
+    <h2 style="margin:0">Neue Kategorie</h2>
+    <label class="feld">Name<input type="text" name="name" required placeholder="z. B. Peugeot"></label>
+    <label class="feld">Unter (leer = oberste Ebene){{ kat_select('parent_id', kategorien, None, '– oberste Ebene –') }}</label>
+    <label class="feld">Art<select name="art"><option value="">von oben erben (Standard: Ausgabe)</option><option value="ausgabe">Ausgabe</option><option value="einnahme">Einnahme</option><option value="umbuchung">Umbuchung</option></select></label>
+    <button class="btn primaer" type="submit">Anlegen</button>
+    <p class="leise klein" style="margin:0">Beispiel für tiefe Struktur: Mobilität › Autos › Peugeot › Tanken. Auswertungen summieren jede Ebene inklusive aller Unterkategorien.</p>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

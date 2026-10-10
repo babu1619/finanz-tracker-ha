@@ -1,0 +1,19 @@
+name: Finanz-Tracker
+version: "0.1.0"
+slug: finanz_tracker
+description: Haushaltsbuch für die Familie – CSV-Import, Kategorien, Regeln, Umbuchungen und Dashboard
+url: https://github.com/DEIN-GITHUB-NAME/finanz-tracker
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: application
+boot: auto
+ports:
+  8080/tcp: 8099
+ports_description:
+  8080/tcp: Weboberfläche des Finanz-Trackers
+webui: "http://[HOST]:[PORT:8080]"
+options: {}
+schema:
+  admin_passwort_reset: password?

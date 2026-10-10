@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titel %}Finanzen{% endblock %} · Finanz-Tracker</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ version }}">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230F6B5C'/%3E%3Cpath d='M9 22V10h12M9 16h9' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+</head>
+<body>
+{% if user %}
+{% set ep = request.endpoint or '' %}
+<header class="top">
+  <a class="logo" href="{{ url_for('dashboard.index') }}">Finanzen</a>
+  <nav aria-label="Hauptnavigation">
+    <a href="{{ url_for('dashboard.index') }}" class="{{ 'aktiv' if ep.startswith('dashboard') }}">Dashboard</a>
+    <a href="{{ url_for('buchungen.liste') }}" class="{{ 'aktiv' if ep.startswith('buchungen') }}">Buchungen</a>
+    {% if darf_schreiben %}<a href="{{ url_for('pruefen.index') }}" class="{{ 'aktiv' if ep.startswith('pruefen') }}">Prüfen{% if offen and (offen.pruefen + offen.umbuchungen) %}<span class="zahl">{{ offen.pruefen + offen.umbuchungen }}</span>{% endif %}</a>{% endif %}
+    <a href="{{ url_for('kategorien.liste') }}" class="{{ 'aktiv' if ep.startswith('kategorien') }}">Kategorien</a>
+    <a href="{{ url_for('regeln.liste') }}" class="{{ 'aktiv' if ep.startswith('regeln') }}">Regeln</a>
+    <a href="{{ url_for('konten.liste') }}" class="{{ 'aktiv' if ep.startswith('konten') }}">Konten</a>
+    {% if darf_schreiben %}<a href="{{ url_for('importe.index') }}" class="{{ 'aktiv' if ep.startswith('importe') }}">Import</a>{% endif %}
+    {% if user.rolle == 'admin' %}<a href="{{ url_for('admin.index') }}" class="{{ 'aktiv' if ep.startswith('admin') }}">Verwaltung</a>{% endif %}
+  </nav>
+  <div class="wer">
+    <a href="{{ url_for('auth.passwort') }}" title="Passwort ändern">{{ user.name }}</a>
+    <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button type="submit">Abmelden</button></form>
+  </div>
+</header>
+{% endif %}
+<main>
+  {% with meldungen = get_flashed_messages(with_categories=true) %}
+    {% for art, text in meldungen %}<div class="flash {{ art }}" role="status">{{ text }}</div>{% endfor %}
+  {% endwith %}
+  {% block inhalt %}{% endblock %}
+</main>
+<footer class="fuss">Finanz-Tracker {{ version }}</footer>
+<script src="{{ url_for('static', filename='app.js') }}?v={{ version }}"></script>
+{% block skript %}{% endblock %}
+</body>
+</html>

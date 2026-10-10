@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Import{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('importe.index') }}">‹ Import</a></div>
+<div class="kopf"><h1>Import abgeschlossen</h1><span class="leise">{{ l.dateiname }} · {{ l.konto_name }} · {{ l.zeitpunkt[:16] }}</span></div>
+{% if l.saldo_datei_cent is not none %}
+  {% if l.saldo_differenz_cent %}
+  <div class="flash bad">Saldoabgleich: Die Datei nennt {{ l.saldo_datei_cent|euro }}, errechnet sind {{ (l.saldo_datei_cent + l.saldo_differenz_cent)|euro }} (Abweichung {{ l.saldo_differenz_cent|euro }}). Meist fehlt ein Zeitraum im Import oder der Startsaldo des Kontos stimmt nicht.</div>
+  {% else %}<div class="flash ok">Saldoabgleich stimmt: {{ l.saldo_datei_cent|euro }} laut Datei = errechneter Kontostand.</div>{% endif %}
+{% endif %}
+<div class="kpis">
+  <div class="kpi"><div class="label">übernommen</div><div class="wert">{{ stat.n or 0 }}</div><div class="unter">{{ l.anzahl_doppelt }} doppelte übersprungen</div></div>
+  <div class="kpi"><div class="label">per Regel</div><div class="wert">{{ stat.regel or 0 }}</div></div>
+  <div class="kpi"><div class="label">aus früheren Buchungen</div><div class="wert">{{ stat.gedaechtnis or 0 }}</div><div class="unter">{{ stat.ungeprueft or 0 }} davon ungeprüft</div></div>
+  <div class="kpi"><div class="label">Umbuchungen</div><div class="wert">{{ stat.umbuchung or 0 }}</div></div>
+  <div class="kpi"><div class="label">offen</div><div class="wert" style="color:#7A4A00">{{ stat.offen or 0 }}</div></div>
+</div>
+<div class="formreihe">
+  {% if stat.offen or stat.ungeprueft %}<a class="btn primaer gross" href="{{ url_for('pruefen.index') }}">Offene im Prüf-Modus zuordnen</a>{% endif %}
+  <a class="btn gross" href="{{ url_for('buchungen.liste', konto=l.konto_id, monat='alle') }}">Buchungen ansehen</a>
+  {% if darf_schreiben and not l.rueckgaengig %}
+  <form method="post" action="{{ url_for('importe.rueckgaengig', lid=l.id) }}" data-frage="Alle Buchungen dieses Imports wieder entfernen?">{{ csrf() }}<button class="btn gross gefahr" type="submit">Import rückgängig machen</button></form>
+  {% endif %}
+</div>
+<p class="leise">Kontostand {{ l.konto_name }} jetzt: <b class="mono">{{ kontostand|euro }}</b></p>
+{% endblock %}

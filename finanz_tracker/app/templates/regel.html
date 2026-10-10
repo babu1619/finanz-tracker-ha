@@ -1,0 +1,75 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_select, person_select with context %}
+{% block titel %}Regel{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('regeln.liste') }}">‹ Regeln</a></div>
+<div class="reihe">
+  <form method="post" class="karte breit" style="display:flex;flex-direction:column;gap:14px">
+    {{ csrf() }}
+    <h1>{{ 'Regel bearbeiten' if regel else 'Neue Regel' }}</h1>
+    <label class="feld">Name<input type="text" name="name" value="{{ name }}" required></label>
+
+    <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px">
+      <legend class="leise" style="margin-bottom:6px">Wenn alle Bedingungen zutreffen</legend>
+      {% for c in bed %}{% set i = loop.index0 %}
+      <div class="formreihe bedingung">
+        <select name="feld{{ i }}" class="b-feld" aria-label="Feld" style="flex:1 1 170px">
+          <option value="">– keine –</option>
+          {% for k, t in felder.items() %}<option value="{{ k }}" {{ 'selected' if c.feld == k }}>{{ t }}</option>{% endfor %}
+        </select>
+        <select name="op{{ i }}" data-feldart="text" aria-label="Vergleich" style="flex:1 1 150px">
+          {% for k in ['enthaelt','gleich','beginnt','regex'] %}<option value="{{ k }}" {{ 'selected' if c.op == k }}>{{ operatoren[k] }}</option>{% endfor %}
+        </select>
+        <select name="op{{ i }}" data-feldart="betrag" aria-label="Vergleich" style="flex:1 1 150px">
+          {% for k in ['min','max','gleich'] %}<option value="{{ k }}" {{ 'selected' if c.op == k }}>{{ operatoren[k] }}</option>{% endfor %}
+        </select>
+        <select name="op{{ i }}" data-feldart="tag" aria-label="Vergleich" style="flex:1 1 150px">
+          {% for k in ['ab','bis'] %}<option value="{{ k }}" {{ 'selected' if c.op == k }}>{{ operatoren[k] }}</option>{% endfor %}
+        </select>
+        <input type="text" name="wert{{ i }}" data-feldart="text betrag tag" value="{{ c.wert if c.feld not in ('richtung','konto') }}" aria-label="Wert" style="flex:2 1 200px">
+        <select name="richtung{{ i }}" data-feldart="richtung" aria-label="Richtung" style="flex:2 1 200px">
+          <option value="ausgang" {{ 'selected' if c.wert == 'ausgang' }}>Ausgang (Belastung)</option>
+          <option value="eingang" {{ 'selected' if c.wert == 'eingang' }}>Eingang (Gutschrift)</option></select>
+        <select name="konto{{ i }}" data-feldart="konto" aria-label="Konto" style="flex:2 1 200px">
+          {% for k in konten %}<option value="{{ k.id }}" {{ 'selected' if c.wert|string == k.id|string }}>{{ k.name }}</option>{% endfor %}</select>
+      </div>
+      {% endfor %}
+    </fieldset>
+
+    <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px">
+      <legend class="leise" style="margin-bottom:6px">Dann setzen</legend>
+      <label class="feld">Kategorie{{ kat_select('kategorie_id', kategorien, akt.kategorie_id) }}</label>
+      <div class="formreihe">
+        <label class="feld">Person{{ person_select('person_id', personen, akt.person_id) }}</label>
+        <label class="feld">Abrechnungsmonat<select name="monat_versatz">
+          {% for v, t in [(0,'wie Buchungsdatum'),(1,'Folgemonat (+1), z. B. Gehalt Ende des Monats'),(-1,'Vormonat (−1)')] %}
+          <option value="{{ v }}" {{ 'selected' if (akt.monat_versatz or 0) == v }}>{{ t }}</option>{% endfor %}</select></label>
+      </div>
+      <label class="check"><input type="checkbox" name="als_umbuchung" value="1" {{ 'checked' if akt.als_umbuchung }}> Als Umbuchung zu einem eigenen Konto außerhalb des Tools behandeln (z. B. Depot-Sparplan). Nicht für Darlehensraten verwenden – die sind Ausgaben.</label>
+    </fieldset>
+
+    {% if regel %}<label class="check"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if regel.aktiv }}> Regel aktiv</label>{% else %}<input type="hidden" name="aktiv" value="1">{% endif %}
+    <label class="check"><input type="checkbox" name="anwenden" value="1"> Nach dem Speichern auf alle nicht manuell zugeordneten Buchungen anwenden</label>
+    <div class="formreihe">
+      <button class="btn primaer" type="submit" name="aktion" value="speichern">Speichern</button>
+      <button class="btn" type="submit" name="aktion" value="testen">Gegen bestehende Buchungen testen</button>
+    </div>
+  </form>
+
+  <aside class="schmal" style="display:flex;flex-direction:column;gap:16px">
+    {% if test %}
+    <div class="karte">
+      <h2>Testergebnis</h2>
+      <p>Trifft <b>{{ test.treffer }}</b> Buchungen{% if akt.kategorie_id %}, davon <b>{{ test.anders }}</b> heute anders zugeordnet{% endif %}.</p>
+      {% if test.beispiele %}<table class="tab"><tbody>{% for b in test.beispiele %}
+        <tr><td style="padding-left:0">{{ b.buchungsdatum|datum }} · {{ b.gegenpartei|truncate(30) }}<div class="leise">heute: {{ b.kat_pfad or 'ohne Kategorie' }}</div></td>
+            <td class="betrag" style="padding-right:0">{{ b.betrag_cent|euro_vz }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+    </div>
+    {% endif %}
+    {% if regel %}
+    <form method="post" class="karte" data-frage="Regel wirklich löschen?">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen">
+      <h2>Löschen</h2><p class="leise">Bereits zugeordnete Buchungen behalten ihre Kategorie.</p>
+      <button class="btn gefahr" type="submit">Regel löschen</button></form>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

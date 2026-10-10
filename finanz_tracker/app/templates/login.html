@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Anmelden{% endblock %}
+{% block inhalt %}
+<div class="auth">
+  <form method="post" class="karte">
+    {{ csrf() }}
+    <h1>Finanzen</h1>
+    {% if fehler %}<div class="flash warn">{{ fehler }}</div>{% endif %}
+    <label class="feld">Benutzername<input type="text" name="name" required autofocus autocomplete="username"></label>
+    <label class="feld">Passwort<input type="password" name="passwort" required autocomplete="current-password"></label>
+    <button class="btn primaer gross" type="submit">Anmelden</button>
+  </form>
+</div>
+{% endblock %}

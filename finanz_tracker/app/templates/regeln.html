@@ -1,0 +1,34 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Regeln{% endblock %}
+{% block inhalt %}
+<div class="kopf">
+  <h1>Regeln</h1>
+  <span class="leise">{{ rows|length }} Regeln · die erste passende Regel gewinnt · manuell zugeordnete Buchungen bleiben unberührt</span>
+  {% if darf_schreiben %}<div class="rechts">
+    <form method="post" action="{{ url_for('regeln.anwenden') }}">{{ csrf() }}<button class="btn" type="submit">Alle Regeln jetzt anwenden</button></form>
+    <a class="btn primaer" href="{{ url_for('regeln.neu') }}">Regel anlegen</a></div>{% endif %}
+</div>
+<section class="karte ohne-rand">
+  <div class="scroll"><table class="tab" style="min-width:760px">
+    <thead><tr><th>Prio</th><th>Wenn</th><th>Dann</th><th style="text-align:right">Treffer 12 Mon.</th><th>Zuletzt</th><th></th></tr></thead>
+    <tbody>
+    {% for x in rows %}
+      <tr style="{{ 'opacity:.55' if not x.r.aktiv }}">
+        <td style="white-space:nowrap">
+          {% if darf_schreiben %}
+          <form method="post" action="{{ url_for('regeln.verschieben', rid=x.r.id) }}" style="display:inline-flex;gap:2px">{{ csrf() }}
+            <button class="btn klein" name="richtung" value="hoch" aria-label="nach oben" {{ 'disabled' if loop.first }}>↑</button>
+            <button class="btn klein" name="richtung" value="runter" aria-label="nach unten" {{ 'disabled' if loop.last }}>↓</button></form>
+          {% endif %} <span class="mono leise">{{ loop.index }}</span></td>
+        <td><b>{{ x.r.name }}</b>{% if not x.r.aktiv %} <span class="tag">inaktiv</span>{% endif %}<div class="leise">{{ x.wenn }}</div></td>
+        <td style="font-size:13px">{{ x.dann }}</td>
+        <td class="betrag">{{ x.stat.n }}</td>
+        <td class="leise">{{ x.stat.zuletzt|datum if x.stat.zuletzt else 'nie' }}</td>
+        <td>{% if darf_schreiben %}<a href="{{ url_for('regeln.bearbeiten', rid=x.r.id) }}">Bearbeiten</a>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="leer">Noch keine Regeln. Am schnellsten entstehen sie im Prüf-Modus per Häkchen.</td></tr>
+    {% endfor %}
+    </tbody></table></div>
+</section>
+{% endblock %}

@@ -1,0 +1,124 @@
+"""Erkennung von Umbuchungen zwischen eigenen Konten.
+
+Paar = Abbuchung auf Konto A und Gutschrift auf Konto B mit gleichem Betrag in einem kurzen Zeitfenster.
+Darlehenskonten sind ausgenommen: Zahlungen an ein Darlehen sind Ausgaben, keine Umbuchungen.
+"""
+from datetime import date
+
+from .. import config
+from ..db import q, q1, exe
+from ..util import norm_iban
+from . import kategorien
+
+STICHWORTE = ("umbuchung", "übertrag", "uebertrag", "kreditkarte", "abrechnung", "eigenes konto", "sparen", "tagesgeld")
+
+
+def _eigene_konten():
+    return {r["id"]: r for r in q("SELECT * FROM konto WHERE typ != 'darlehen' AND aktiv = 1")}
+
+
+def _score(a, b, konten) -> float:
+    ka, kb = konten[a["konto_id"]], konten[b["konto_id"]]
+    tage = abs((date.fromisoformat(a["buchungsdatum"]) - date.fromisoformat(b["buchungsdatum"])).days)
+    score = 0.5 - 0.04 * tage
+    if (a["gegen_iban"] and norm_iban(kb["iban"]) == a["gegen_iban"]) or \
+       (b["gegen_iban"] and norm_iban(ka["iban"]) == b["gegen_iban"]):
+        score += 0.45
+    text = " ".join((a["gegenpartei"] + " " + a["verwendungszweck"] + " " + b["gegenpartei"] + " " +
+                     b["verwendungszweck"]).lower().split())
+    if any(w in text for w in STICHWORTE):
+        score += 0.2
+    if "kreditkarte" in (ka["typ"], kb["typ"]):
+        score += 0.1
+    return round(min(score, 1.0), 2)
+
+
+def kandidaten(b, konten):
+    fenster = config.UMBUCHUNG_FENSTER_TAGE
+    if konten[b["konto_id"]]["typ"] == "kreditkarte":
+        fenster = config.UMBUCHUNG_FENSTER_KREDITKARTE_TAGE
+    eigene = [k for k in konten if k != b["konto_id"]]
+    if not eigene:
+        return []
+    marks = ",".join("?" * len(eigene))
+    rows = q(f"SELECT * FROM buchung WHERE konto_id IN ({marks}) AND betrag_cent = ? AND ist_umbuchung = 0 "
+             f"AND umbuchung_partner_id IS NULL AND zuordnung_quelle IS NOT 'manuell' "
+             f"AND abs(julianday(buchungsdatum) - julianday(?)) <= ?",
+             (*eigene, -b["betrag_cent"], b["buchungsdatum"], max(fenster, config.UMBUCHUNG_FENSTER_KREDITKARTE_TAGE)))
+    ergebnis = []
+    for r in rows:
+        f = fenster
+        if konten[r["konto_id"]]["typ"] == "kreditkarte":
+            f = config.UMBUCHUNG_FENSTER_KREDITKARTE_TAGE
+        if abs((date.fromisoformat(r["buchungsdatum"]) - date.fromisoformat(b["buchungsdatum"])).days) <= f:
+            ergebnis.append(r)
+    return ergebnis
+
+
+def verknuepfe(a_id, b_id, benutzer_id=None):
+    uk = kategorien.umbuchung_kategorie_id()
+    for x, y in ((a_id, b_id), (b_id, a_id)):
+        exe("UPDATE buchung SET ist_umbuchung = 1, umbuchung_partner_id = ?, kategorie_id = ?, "
+            "zuordnung_quelle = 'umbuchung', geprueft = 1, regel_id = NULL WHERE id = ?", (y, uk, x))
+    exe("DELETE FROM umbuchung_vorschlag WHERE buchung_a_id IN (?, ?) OR buchung_b_id IN (?, ?)",
+        (a_id, b_id, a_id, b_id))
+
+
+def loese(buchung_id):
+    b = q1("SELECT * FROM buchung WHERE id = ?", (buchung_id,))
+    if not b:
+        return
+    ids = [b["id"]] + ([b["umbuchung_partner_id"]] if b["umbuchung_partner_id"] else [])
+    for i in ids:
+        exe("UPDATE buchung SET ist_umbuchung = 0, umbuchung_partner_id = NULL, kategorie_id = NULL, "
+            "zuordnung_quelle = NULL, geprueft = 0 WHERE id = ?", (i,))
+
+
+def erkenne(buchung_ids: list[int]) -> dict:
+    konten = _eigene_konten()
+    stat = {"auto": 0, "vorschlag": 0}
+    if not buchung_ids:
+        return stat
+    marks = ",".join("?" * len(buchung_ids))
+    neue = q(f"SELECT * FROM buchung WHERE id IN ({marks}) AND ist_umbuchung = 0 "
+             f"AND COALESCE(zuordnung_quelle,'') != 'manuell'", buchung_ids)
+    for b in neue:
+        if b["konto_id"] not in konten:
+            continue
+        b = q1("SELECT * FROM buchung WHERE id = ?", (b["id"],))
+        if b["ist_umbuchung"]:
+            continue
+        kand = kandidaten(b, konten)
+        if not kand:
+            continue
+        bewertet = sorted(((_score(b, k, konten), k) for k in kand), key=lambda x: -x[0])
+        bester_score, bester = bewertet[0]
+        eindeutig = len(bewertet) == 1 or bewertet[1][0] < bester_score - 0.15
+        if eindeutig and bester_score >= config.UMBUCHUNG_AUTO_SCHWELLE:
+            ab, an = (b, bester) if b["betrag_cent"] < 0 else (bester, b)
+            verknuepfe(ab["id"], an["id"])
+            stat["auto"] += 1
+        else:
+            for s, k in bewertet[:3]:
+                ab, an = (b, k) if b["betrag_cent"] < 0 else (k, b)
+                exe("INSERT OR IGNORE INTO umbuchung_vorschlag (buchung_a_id, buchung_b_id, score) VALUES (?,?,?)",
+                    (ab["id"], an["id"], s))
+                stat["vorschlag"] += 1
+    return stat
+
+
+def offene_vorschlaege(sichtbare_konten: list[int]):
+    if not sichtbare_konten:
+        return []
+    marks = ",".join("?" * len(sichtbare_konten))
+    return q(f"""SELECT v.id AS vid, v.score,
+                a.id AS a_id, a.buchungsdatum AS a_datum, a.betrag_cent AS a_betrag, a.gegenpartei AS a_partei,
+                a.verwendungszweck AS a_zweck, ka.name AS a_konto,
+                b.id AS b_id, b.buchungsdatum AS b_datum, b.betrag_cent AS b_betrag, b.gegenpartei AS b_partei,
+                b.verwendungszweck AS b_zweck, kb.name AS b_konto
+            FROM umbuchung_vorschlag v
+            JOIN buchung a ON a.id = v.buchung_a_id JOIN konto ka ON ka.id = a.konto_id
+            JOIN buchung b ON b.id = v.buchung_b_id JOIN konto kb ON kb.id = b.konto_id
+            WHERE v.status = 'offen' AND a.ist_umbuchung = 0 AND b.ist_umbuchung = 0
+              AND a.konto_id IN ({marks}) AND b.konto_id IN ({marks})
+            ORDER BY a.buchungsdatum DESC, v.score DESC""", (*sichtbare_konten, *sichtbare_konten))

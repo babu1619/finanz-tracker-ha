@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block titel %}Dashboard{% endblock %}
+{% block inhalt %}
+<div class="kopf">
+  <div class="monatwahl">
+    <a href="?monat={{ vor }}{% if person_id %}&person={{ person_id }}{% endif %}" aria-label="Vormonat">‹</a>
+    <div class="mt"><span class="leise">Abrechnungsmonat</span><b>{{ monat|monat }}</b></div>
+    <a href="?monat={{ nach }}{% if person_id %}&person={{ person_id }}{% endif %}" aria-label="Folgemonat">›</a>
+  </div>
+  <div class="chips" role="group" aria-label="Person filtern">
+    <a href="?monat={{ monat }}" class="{{ 'an' if not person_id }}">Alle</a>
+    {% for p in personen %}<a href="?monat={{ monat }}&person={{ p.id }}" class="{{ 'an' if person_id == p.id }}">{{ p.name }}</a>{% endfor %}
+  </div>
+  {% if darf_schreiben %}<div class="rechts"><a class="btn primaer" href="{{ url_for('importe.index') }}">Datei importieren</a></div>{% endif %}
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Einnahmen</div><div class="wert">{{ werte.einnahmen|euro_rund }}</div>
+    <div class="unter">Vormonat {{ vormonat.einnahmen|euro_rund }}</div></div>
+  <div class="kpi"><div class="label">Ausgaben</div><div class="wert">{{ werte.ausgaben|euro_rund }}</div>
+    <div class="unter">Vormonat {{ vormonat.ausgaben|euro_rund }} · ohne Umbuchungen</div></div>
+  <div class="kpi"><div class="label">Saldo · Sparquote</div>
+    <div class="wert {{ 'pos' if werte.saldo > 0 }}">{{ werte.saldo|euro_rund }}</div>
+    <div class="unter">{% if werte.sparquote is not none %}{{ (werte.sparquote * 100)|round|int }} % der Einnahmen{% else %}–{% endif %}</div></div>
+  <div class="kpi"><div class="label">Vermögen auf den Konten</div><div class="wert">{{ vermoegen|euro_rund }}</div>
+    <div class="unter">ohne Darlehen · {{ konten|selectattr('k.typ', 'ne', 'darlehen')|list|length }} Konten</div></div>
+</div>
+
+<div class="reihe">
+  <section class="karte breit">
+    <div class="kopf"><h2 style="margin:0">Ausgaben nach Kategorie</h2><span class="rechts leise">Δ zum Vormonat</span></div>
+    {% if kat %}
+    <div style="margin-top:10px">
+      {% for k in kat %}
+      <a class="katzeile" href="{{ url_for('buchungen.liste', monat=monat, kategorie=(k.id if k.id else 'ohne')) }}">
+        <span class="name" title="{{ k.pfad or k.name }}">{{ k.name }}</span>
+        <span class="balken"><span style="width: {{ (k.betrag / max_kat * 100)|round(1) }}%; {% if not k.id %}background:#C98A12{% endif %}"></span></span>
+        <span class="b mono">{{ k.betrag|euro_rund }}</span>
+        <span class="d">{% if k.vormonat %}{% set d = ((k.betrag - k.vormonat) / k.vormonat * 100)|round|int %}<span style="color: {{ '#8A1F18' if d > 0 else '#0A4D42' }}">{% if d > 500 %}&gt; +500 %{% else %}{{ '+' if d > 0 }}{{ d }} %{% endif %}</span>{% else %}<span class="leise">neu</span>{% endif %}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% else %}<p class="leer">Keine Ausgaben in diesem Monat.</p>{% endif %}
+  </section>
+
+  <section class="karte schmal">
+    <h2>Zu prüfen</h2>
+    <div class="pruefliste">
+      <a href="{{ url_for('pruefen.index') }}"><span class="zahlkreis warn">{{ ohne_kat }}</span><span style="flex:1">Buchungen ohne Kategorie</span><span aria-hidden="true">›</span></a>
+      <a href="{{ url_for('buchungen.liste', status='ungeprueft', monat='alle') }}"><span class="zahlkreis warn">{{ ungeprueft }}</span><span style="flex:1">Automatisch zugeordnet, ungeprüft</span><span aria-hidden="true">›</span></a>
+      <a href="{{ url_for('pruefen.index') }}#umbuchungen"><span class="zahlkreis info">{{ umbuchungs_vorschlaege }}</span><span style="flex:1">Umbuchungsvorschläge bestätigen</span><span aria-hidden="true">›</span></a>
+      {% for r in saldo_warnungen %}
+      <a href="{{ url_for('importe.lauf', lid=r.letzter.id) }}"><span class="zahlkreis bad">!</span><span style="flex:1">Saldo {{ r.k.name }} weicht um {{ r.letzter.saldo_differenz_cent|euro }} ab</span><span aria-hidden="true">›</span></a>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<section class="karte">
+  <div class="kopf"><h2 style="margin:0">Einnahmen und Ausgaben, 12 Monate</h2>
+    <div class="legende rechts"><span><i style="background:#A9D2C7"></i>Einnahmen</span><span><i style="background:#0F6B5C"></i>Ausgaben</span></div></div>
+  <div class="scroll" style="margin-top:14px">
+    <div class="verlauf">
+      {% for v in verlauf %}
+      <a class="m" href="?monat={{ v.monat }}" title="{{ v.monat|monat }}: Einnahmen {{ v.einnahmen|euro_rund }}, Ausgaben {{ v.ausgaben|euro_rund }}">
+        <span class="ein" style="height: {{ (v.einnahmen / max_verlauf * 160)|round|int }}px"></span>
+        <span class="aus" style="height: {{ (v.ausgaben / max_verlauf * 160)|round|int }}px"></span>
+      </a>
+      {% endfor %}
+    </div>
+    <div class="verlauf-lbl">{% for v in verlauf %}<span style="{{ 'font-weight:600;color:#18211E' if v.monat == monat }}">{{ v.monat|monat_kurz }}</span>{% endfor %}</div>
+  </div>
+</section>
+
+<section class="karte ohne-rand">
+  <div class="kopf"><h2 style="margin:0">Konten und Importstand</h2>{% if user.rolle == 'admin' %}<a class="rechts" href="{{ url_for('konten.neu') }}">Konto anlegen</a>{% endif %}</div>
+  {% if konten %}
+  <div class="scroll"><table class="tab">
+    <thead><tr><th>Konto</th><th style="text-align:right">Saldo</th><th>Letzter Import</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in konten %}
+      <tr>
+        <td><b>{{ r.k.name }}</b> <span class="leise">{{ {'giro':'Giro','tagesgeld':'Tagesgeld','kreditkarte':'Kreditkarte','bargeld':'Bargeld','depot':'Depot','darlehen':'Darlehen · eigener Bereich','sonstiges':''}[r.k.typ] }}</span></td>
+        <td class="betrag">{{ r.saldo|euro }}</td>
+        <td class="leise">{% if r.letzter %}{{ r.letzter.zeitpunkt|datum }}{% if r.tage == 0 %} · heute{% elif r.tage == 1 %} · gestern{% elif r.tage is not none %} · vor {{ r.tage }} Tagen{% endif %}{% else %}noch nie{% endif %}</td>
+        <td>{% if r.letzter and r.letzter.saldo_differenz_cent %}<span class="tag bad">Saldo weicht ab</span>
+            {% elif r.faellig %}<span class="tag warn">Import fällig</span>
+            {% elif r.letzter and r.letzter.saldo_datei_cent is not none %}<span class="tag ok">Saldo stimmt</span>
+            {% else %}<span class="tag">ohne Abgleich</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody></table></div>
+  {% else %}<p class="leer">Noch keine Konten. {% if user.rolle == 'admin' %}<a href="{{ url_for('konten.neu') }}">Jetzt ein Konto anlegen</a>{% endif %}</p>{% endif %}
+</section>
+{% endblock %}

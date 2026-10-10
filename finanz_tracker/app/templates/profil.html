@@ -1,0 +1,84 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Profil {{ p.name }}{% endblock %}
+{% block inhalt %}
+{% set bsp = pd.beispiel if pd.beispiel is mapping else {} %}
+{% set headers = bsp.get('headers', []) %}
+{% set zeilen = bsp.get('zeilen', []) %}
+{% set feld_von = {} %}{% for s in pd.spalten %}{% set _ = feld_von.update({s.index: s.feld}) %}{% endfor %}
+<div class="kopf"><a href="{{ url_for('importe.index') }}">‹ Import</a></div>
+<form method="post" style="display:flex;flex-direction:column;gap:18px">
+  {{ csrf() }}
+  <div class="kopf">
+    <div><div class="leise">CSV-Profil</div><h1>{{ p.name }}</h1></div>
+    <label class="feld rechts" style="min-width:260px">Profilname<input type="text" name="name" value="{{ p.name }}"></label>
+  </div>
+
+  <section class="karte" style="display:flex;flex-direction:column;gap:12px">
+    <h2 style="margin:0">1 · Datei lesen</h2>
+    <div class="formreihe">
+      <label class="feld">Zeichensatz<select name="encoding">{% for e in encodings %}<option value="{{ e }}" {{ 'selected' if pd.einstellungen.encoding == e }}>{{ e }}</option>{% endfor %}</select></label>
+      <label class="feld">Trennzeichen<select name="delimiter">
+        {% for k, t in [('semikolon','Semikolon ;'),('komma','Komma ,'),('tab','Tabulator'),('pipe','Senkrechter Strich |')] %}<option value="{{ k }}" {{ 'selected' if delim_key == k }}>{{ t }}</option>{% endfor %}</select></label>
+      <label class="feld">Datumsformat<select name="date_format">{% for k in datumsformate %}<option value="{{ k }}" {{ 'selected' if pd.einstellungen.date_format == k }}>{{ k }}</option>{% endfor %}</select></label>
+      <label class="feld">Zahlenformat<select name="decimal"><option value="," {{ 'selected' if pd.einstellungen.decimal == ',' }}>1.234,56 (deutsch)</option><option value="." {{ 'selected' if pd.einstellungen.decimal == '.' }}>1,234.56</option></select></label>
+    </div>
+    {% if bsp.get('vorspann') %}<pre class="roh"><span style="color:#8A9590;text-decoration:line-through">{% for r in bsp.vorspann %}{{ r|join(' ; ') }}
+{% endfor %}</span><b style="color:#18211E">{{ headers|join(' ; ') }}</b></pre>
+    <p class="leise klein" style="margin:0">Durchgestrichen: Vorspann-Zeilen, die übersprungen werden. Fett: erkannte Spaltenüberschriften. Wird ein Zeichensatz oder Trennzeichen geändert, liest das Tool die Spalten beim Speichern neu ein.</p>{% endif %}
+  </section>
+
+  <section class="karte ohne-rand" id="spaltenzuordnung">
+    <div class="kopf"><h2 style="margin:0">2 · Spalten zuordnen</h2><span class="rechts leise">Mehrere Spalten für Gegenpartei oder Verwendungszweck werden zusammengefügt.</span></div>
+    {% if headers %}
+    <div class="scroll"><table class="tab spalten-tab" style="min-width:{{ headers|length * 140 }}px">
+      <thead><tr>{% for h in headers %}{% set i = loop.index0 %}
+        <th data-spalte="{{ i }}"><select class="spalte" name="feld{{ i }}" aria-label="Zuordnung Spalte {{ h }}" style="width:100%">
+          {% for k, t in felder.items() %}<option value="{{ k }}" {{ 'selected' if feld_von.get(i, 'ignore') == k }}>{{ t }}</option>{% endfor %}
+        </select><div style="margin-top:6px;color:#3A4642;font-weight:600">{{ h }}</div></th>{% endfor %}</tr></thead>
+      <tbody>{% for r in zeilen %}<tr>{% for c in r %}<td data-spalte="{{ loop.index0 }}">{{ c }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table></div>
+    <div class="formreihe" style="padding:12px 18px;border-top:1px solid var(--line)">
+      <span class="leise">Betrag steht</span>
+      {% for k, t in [('vorzeichen','in einer Spalte mit Vorzeichen'),('soll_haben','in zwei Spalten Soll und Haben'),('kennzeichen','als Betrag plus Kennzeichen S/H')] %}
+      <label class="check"><input type="radio" name="betrag_modus" value="{{ k }}" {{ 'checked' if pd.betrag_modus == k }}> {{ t }}</label>{% endfor %}
+    </div>
+    {% else %}<p class="leer">Keine Beispieldaten gespeichert – bitte unten eine Beispieldatei hochladen.</p>{% endif %}
+  </section>
+
+  <div class="reihe">
+    <section class="karte ohne-rand breit">
+      <h2>3 · So werden die Buchungen gelesen</h2>
+      <div class="scroll"><table class="tab" style="min-width:600px">
+        <thead><tr><th>Datum</th><th>Gegenpartei</th><th>Verwendungszweck</th><th style="text-align:right">Betrag</th><th style="text-align:right">Saldo</th></tr></thead>
+        <tbody id="live-vorschau"></tbody></table></div>
+      <p class="leise klein" style="padding:0 18px">Die Vorschau folgt deiner Auswahl sofort. Nach dem Speichern prüft das Tool zusätzlich die ganze Beispieldatei.</p>
+    </section>
+    <aside class="karte schmal" style="display:flex;flex-direction:column;gap:12px">
+      <h2 style="margin:0">4 · Prüfung und Konten</h2>
+      <ul class="pruefpunkte">
+        {% for f in pruefung %}<li><span class="i bad">!</span>{{ f }}</li>{% endfor %}
+        {% if not pruefung %}<li><span class="i ok">✓</span>Pflichtfelder zugeordnet</li>{% endif %}
+        {% set fs = pd.spalten|map(attribute='feld')|list %}
+        {% if 'saldo' in fs %}<li><span class="i ok">✓</span>Saldo-Spalte: Saldoabgleich nach jedem Import</li>{% else %}<li><span class="i hint">i</span>Ohne Saldo-Spalte kein automatischer Saldoabgleich</li>{% endif %}
+        {% if 'iban' in fs %}<li><span class="i ok">✓</span>Gegen-IBAN hilft bei Umbuchungen</li>{% else %}<li><span class="i hint">i</span>Ohne Gegen-IBAN werden Umbuchungen nur über Betrag und Text erkannt</li>{% endif %}
+        {% if hat_datei %}<li><span class="i {{ 'bad' if vorschau_fehler else 'ok' }}">{{ '!' if vorschau_fehler else '✓' }}</span>Beispieldatei: {{ vorschau|length }}{% if vorschau|length >= 6 %}+{% endif %} Zeilen gelesen{% if vorschau_fehler %}, {{ vorschau_fehler|length }} mit Fehlern (z. B. Zeile {{ vorschau_fehler[0].zeile }}: {{ vorschau_fehler[0].fehler }}){% endif %}</li>{% endif %}
+        {% for h in hinweise %}<li><span class="i hint">i</span>{{ h }}</li>{% endfor %}
+      </ul>
+      <div><div class="leise klein" style="margin-bottom:6px">Für diese Konten verwenden</div>
+        {% for k in konten %}<label class="check"><input type="checkbox" name="konto{{ k.id }}" value="1" {{ 'checked' if k.id in zuordnung_konten }}> {{ k.name }}</label>{% else %}<p class="leise klein">Noch keine Konten angelegt.</p>{% endfor %}</div>
+      <button class="btn primaer gross" type="submit">Profil speichern</button>
+    </aside>
+  </div>
+</form>
+
+<div class="reihe">
+  <form method="post" action="{{ url_for('importe.profil_datei', pid=p.id) }}" enctype="multipart/form-data" class="karte breit formreihe">
+    {{ csrf() }}
+    <label class="feld" style="flex:2 1 260px">Neue Beispieldatei (z. B. nach Formatänderung der Bank)<input type="file" name="datei" accept=".csv,.txt,text/csv" required></label>
+    <button class="btn" type="submit">Neu einlesen</button>
+  </form>
+  <form method="post" class="karte schmal" data-frage="Profil wirklich löschen?">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen">
+    <button class="btn gefahr" type="submit">Profil löschen</button></form>
+</div>
+<script type="application/json" id="beispiel-daten">{{ zeilen|tojson }}</script>
+{% endblock %}

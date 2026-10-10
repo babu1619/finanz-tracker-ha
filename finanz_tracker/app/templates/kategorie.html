@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_select with context %}
+{% block titel %}{{ k.name }}{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('kategorien.liste') }}">‹ Kategorien</a></div>
+<div class="reihe">
+  <form method="post" class="karte breit" style="display:flex;flex-direction:column;gap:12px">
+    {{ csrf() }}
+    <div class="leise">{{ k.pfad }}</div>
+    <h1>{{ k.name }}</h1>
+    <label class="feld">Name<input type="text" name="name" value="{{ k.name }}" required></label>
+    <label class="feld">Unter{{ kat_select('parent_id', kategorien, k.parent_id, '– oberste Ebene –', gesperrt=gesperrt) }}</label>
+    <label class="feld">Art<select name="art">
+      <option value="" {{ 'selected' if not k.art }}>von oben erben</option>
+      {% for a, t in [('ausgabe','Ausgabe'),('einnahme','Einnahme'),('umbuchung','Umbuchung')] %}<option value="{{ a }}" {{ 'selected' if k.art == a }}>{{ t }}</option>{% endfor %}
+    </select></label>
+    <div class="formreihe"><button class="btn primaer" type="submit">Speichern</button>
+      <a class="btn" href="{{ url_for('buchungen.liste', kategorie=k.id, monat='alle') }}">{{ anzahl }} Buchungen ansehen</a></div>
+    <p class="leise klein" style="margin:0">Beim Umbenennen oder Verschieben werden die Pfade aller Unterkategorien automatisch nachgeführt.</p>
+  </form>
+  <form method="post" class="karte schmal" style="display:flex;flex-direction:column;gap:12px" data-frage="Kategorie wirklich löschen?">
+    {{ csrf() }}<input type="hidden" name="aktion" value="loeschen">
+    <h2 style="margin:0">Löschen</h2>
+    <label class="feld">Buchungen ({{ anzahl }}) verschieben nach{{ kat_select('ziel_id', kategorien, k.parent_id, '– ohne Kategorie –', gesperrt=[k.id]) }}</label>
+    <button class="btn gefahr" type="submit">Kategorie löschen</button>
+  </form>
+</div>
+{% endblock %}

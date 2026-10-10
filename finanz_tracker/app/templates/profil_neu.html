@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}CSV-Profil anlegen{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('importe.index') }}">‹ Import</a></div>
+<div class="auth" style="max-width:640px;margin-top:0">
+  <form method="post" enctype="multipart/form-data" class="karte">
+    {{ csrf() }}
+    <h1>CSV-Profil anlegen</h1>
+    <p class="leise" style="margin:0">Lade einen CSV-Export deiner Bank hoch. Zeichensatz, Trennzeichen, Kopfzeile und Zahlenformat werden erkannt; danach ordnest du die Spalten zu und siehst sofort, wie die Buchungen gelesen werden.</p>
+    <label class="feld">Profilname<input type="text" name="name" placeholder="z. B. Sparkasse CSV"></label>
+    <label class="feld">Beispieldatei<input type="file" name="datei" accept=".csv,.txt,text/csv" required></label>
+    <button class="btn primaer gross" type="submit">Datei analysieren</button>
+  </form>
+</div>
+{% endblock %}

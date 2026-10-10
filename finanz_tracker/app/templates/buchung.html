@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_suche, person_select, quelle with context %}
+{% block titel %}Buchung{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ zurueck or url_for('buchungen.liste') }}">‹ zurück</a></div>
+<div class="reihe">
+  <section class="karte breit">
+    <div class="leise">{{ b.buchungsdatum|datum }}{% if b.valuta and b.valuta != b.buchungsdatum %} · Valuta {{ b.valuta|datum }}{% endif %} · {{ b.konto_name }}</div>
+    <h1 style="margin:4px 0">{{ b.gegenpartei or '–' }}</h1>
+    <div class="mono {{ 'pos' if b.betrag_cent > 0 }}" style="font-size:26px;font-weight:600">{{ b.betrag_cent|euro_vz }}</div>
+    <p>{{ b.verwendungszweck }}</p>
+    {% if b.gegen_iban %}<p class="leise">Gegen-IBAN {{ b.gegen_iban }}</p>{% endif %}
+    {% if b.ist_umbuchung %}
+      <div class="flash ok">Umbuchung{% if partner %} mit {{ partner.konto_name }} am {{ partner.buchungsdatum|datum }} ({{ partner.betrag_cent|euro_vz }}){% else %} an ein Konto außerhalb des Tools{% endif %}.
+      {% if darf_schreiben %}<form method="post" style="display:inline">{{ csrf() }}<input type="hidden" name="aktion" value="umbuchung_loesen"><input type="hidden" name="zurueck" value="{{ zurueck }}"><button class="btn klein" type="submit">Verknüpfung lösen</button></form>{% endif %}</div>
+    {% endif %}
+    <p class="leise">Zuordnung: {{ quelle(b) or 'noch keine' }}</p>
+  </section>
+
+  {% if darf_schreiben and not b.ist_umbuchung %}
+  <form method="post" class="karte schmal" style="display:flex;flex-direction:column;gap:12px">
+    {{ csrf() }}<input type="hidden" name="zurueck" value="{{ zurueck }}">
+    <h2 style="margin:0">Zuordnen</h2>
+    <label class="feld">Kategorie{{ kat_suche('kategorie_id', kategorien, b.kategorie_id) }}</label>
+    <label class="feld">Person{{ person_select('person_id', personen, b.person_id) }}</label>
+    <label class="feld">Abrechnungsmonat
+      <select name="abrechnungsmonat">{% for m in monate %}<option value="{{ m }}" {{ 'selected' if m == b.abrechnungsmonat }}>{{ m|monat }}{% if m == b.buchungsdatum[:7] %} (Buchungsmonat){% endif %}</option>{% endfor %}</select></label>
+    <label class="feld">Notiz<input type="text" name="notiz" value="{{ b.notiz or '' }}" placeholder="optional"></label>
+    <div class="formreihe">
+      <button class="btn primaer" type="submit">Speichern</button>
+      <button class="btn" type="submit" name="regel" value="1">Speichern und Regel daraus erstellen</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

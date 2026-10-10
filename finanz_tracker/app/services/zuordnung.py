@@ -1,0 +1,183 @@
+"""Automatische Zuordnung: 1. Regeln (sicher), 2. Gedächtnis (gleiche Gegenpartei wie bestätigte Buchungen).
+
+Manuell zugeordnete Buchungen werden nie überschrieben.
+"""
+import re
+from collections import Counter
+
+from ..db import q, q1, exe, jload, jdump
+from ..util import monat_von, monat_plus, parse_euro_eingabe
+from . import kategorien
+
+BEDINGUNGS_FELDER = {
+    "gegenpartei": "Gegenpartei",
+    "verwendungszweck": "Verwendungszweck",
+    "gegen_iban": "Gegen-IBAN",
+    "betrag": "Betrag (ohne Vorzeichen, €)",
+    "richtung": "Richtung",
+    "konto": "Konto",
+    "tag": "Tag im Monat",
+}
+OPERATOREN = {
+    "enthaelt": "enthält",
+    "gleich": "ist gleich",
+    "beginnt": "beginnt mit",
+    "regex": "regulärer Ausdruck",
+    "min": "mindestens",
+    "max": "höchstens",
+    "ab": "ab Tag",
+    "bis": "bis Tag",
+}
+
+
+def _text(b, feld):
+    return (b[feld] or "").lower()
+
+
+def bedingung_trifft(c: dict, b) -> bool:
+    feld, op, wert = c.get("feld"), c.get("op"), str(c.get("wert", "")).strip()
+    try:
+        if feld in ("gegenpartei", "verwendungszweck", "gegen_iban"):
+            t = _text(b, feld)
+            w = wert.lower()
+            if feld == "gegen_iban":
+                t, w = t.replace(" ", ""), w.replace(" ", "")
+            if op == "enthaelt":
+                return w in t
+            if op == "gleich":
+                return t == w
+            if op == "beginnt":
+                return t.startswith(w)
+            if op == "regex":
+                return re.search(wert, b[feld] or "", re.IGNORECASE) is not None
+            return False
+        if feld == "betrag":
+            betrag = abs(b["betrag_cent"])
+            grenze = abs(parse_euro_eingabe(wert))
+            if op == "min":
+                return betrag >= grenze
+            if op == "max":
+                return betrag <= grenze
+            if op == "gleich":
+                return betrag == grenze
+            return False
+        if feld == "richtung":
+            return (b["betrag_cent"] > 0) if wert == "eingang" else (b["betrag_cent"] < 0)
+        if feld == "konto":
+            return str(b["konto_id"]) == wert
+        if feld == "tag":
+            tag = int(str(b["buchungsdatum"])[8:10])
+            return tag >= int(wert) if op == "ab" else tag <= int(wert)
+    except (ValueError, re.error, TypeError):
+        return False
+    return False
+
+
+def regel_trifft(regel, b) -> bool:
+    bed = jload(regel["bedingungen"], [])
+    return bool(bed) and all(bedingung_trifft(c, b) for c in bed)
+
+
+def aktive_regeln():
+    return q("SELECT * FROM regel WHERE aktiv = 1 ORDER BY prioritaet, id")
+
+
+def zielwerte(regel, b) -> dict:
+    a = jload(regel["aktionen"], {})
+    werte = {}
+    if a.get("kategorie_id"):
+        werte["kategorie_id"] = int(a["kategorie_id"])
+    if a.get("person_id"):
+        werte["person_id"] = int(a["person_id"])
+    versatz = int(a.get("monat_versatz") or 0)
+    werte["abrechnungsmonat"] = monat_plus(monat_von(b["buchungsdatum"]), versatz)
+    if a.get("als_umbuchung"):
+        werte["ist_umbuchung"] = 1
+        uk = kategorien.umbuchung_kategorie_id()
+        if uk:
+            werte["kategorie_id"] = uk
+    return werte
+
+
+def gedaechtnis_vorschlag(b):
+    """Häufigste bestätigte Kategorie für dieselbe Gegenpartei. -> (kategorie_id, person_id, anzahl, gesamt)"""
+    if not b["partner_key"]:
+        return None
+    rows = q("SELECT kategorie_id, person_id FROM buchung WHERE partner_key = ? AND geprueft = 1 "
+             "AND kategorie_id IS NOT NULL AND ist_umbuchung = 0 AND id != ? ORDER BY buchungsdatum DESC LIMIT 20",
+             (b["partner_key"], b["id"]))
+    if not rows:
+        return None
+    zaehler = Counter((r["kategorie_id"], r["person_id"]) for r in rows)
+    (kat, person), anzahl = zaehler.most_common(1)[0]
+    return {"kategorie_id": kat, "person_id": person, "anzahl": anzahl, "gesamt": len(rows)}
+
+
+def ordne_zu(buchung_ids: list[int] | None = None, ueberschreiben=False) -> dict:
+    """Wendet Regeln und Gedächtnis an. ueberschreiben=True ordnet auch bereits automatisch zugeordnete neu."""
+    regeln = aktive_regeln()
+    if buchung_ids is None:
+        rows = q("SELECT * FROM buchung WHERE COALESCE(zuordnung_quelle,'') NOT IN ('manuell','umbuchung')")
+    else:
+        if not buchung_ids:
+            return {"regel": 0, "gedaechtnis": 0, "offen": 0}
+        marks = ",".join("?" * len(buchung_ids))
+        rows = q(f"SELECT * FROM buchung WHERE id IN ({marks})", buchung_ids)
+    stat = {"regel": 0, "gedaechtnis": 0, "offen": 0}
+    for b in rows:
+        if b["zuordnung_quelle"] in ("manuell", "umbuchung"):
+            continue
+        if b["zuordnung_quelle"] and not ueberschreiben and buchung_ids is None:
+            continue
+        treffer = next((r for r in regeln if regel_trifft(r, b)), None)
+        if treffer:
+            w = zielwerte(treffer, b)
+            exe("UPDATE buchung SET kategorie_id = COALESCE(?, kategorie_id), person_id = COALESCE(?, person_id), "
+                "abrechnungsmonat = ?, ist_umbuchung = ?, zuordnung_quelle = 'regel', regel_id = ?, geprueft = 1 WHERE id = ?",
+                (w.get("kategorie_id"), w.get("person_id"), w["abrechnungsmonat"], w.get("ist_umbuchung", b["ist_umbuchung"]),
+                 treffer["id"], b["id"]))
+            stat["regel"] += 1
+            continue
+        if b["ist_umbuchung"]:
+            continue
+        g = gedaechtnis_vorschlag(b)
+        if g:
+            sicher = g["anzahl"] >= 2 and g["anzahl"] == g["gesamt"]
+            exe("UPDATE buchung SET kategorie_id = ?, person_id = COALESCE(?, person_id), zuordnung_quelle = 'gedaechtnis', "
+                "regel_id = NULL, geprueft = ? WHERE id = ?",
+                (g["kategorie_id"], g["person_id"], 1 if sicher else 0, b["id"]))
+            stat["gedaechtnis"] += 1
+        else:
+            stat["offen"] += 1
+    return stat
+
+
+def teste_regel(bedingungen: list, aktionen: dict, sichtbare_konten: list[int]) -> dict:
+    """Wie viele bestehende Buchungen trifft die Regel, und wie viele würden anders zugeordnet?"""
+    pseudo = {"bedingungen": jdump(bedingungen), "aktionen": jdump(aktionen)}
+    if not sichtbare_konten:
+        return {"treffer": 0, "anders": 0, "beispiele": []}
+    marks = ",".join("?" * len(sichtbare_konten))
+    rows = q(f"SELECT b.*, k.pfad AS kat_pfad FROM buchung b LEFT JOIN kategorie k ON k.id = b.kategorie_id "
+             f"WHERE b.konto_id IN ({marks}) ORDER BY b.buchungsdatum DESC", sichtbare_konten)
+    treffer, anders, beispiele = 0, 0, []
+    ziel_kat = int(aktionen["kategorie_id"]) if aktionen.get("kategorie_id") else None
+    for b in rows:
+        if regel_trifft(pseudo, b):
+            treffer += 1
+            if ziel_kat and b["kategorie_id"] != ziel_kat:
+                anders += 1
+                if len(beispiele) < 8:
+                    beispiele.append(b)
+    return {"treffer": treffer, "anders": anders, "beispiele": beispiele}
+
+
+def regel_statistik() -> dict[int, dict]:
+    rows = q("SELECT regel_id, COUNT(*) AS n, MAX(buchungsdatum) AS zuletzt FROM buchung "
+             "WHERE regel_id IS NOT NULL AND buchungsdatum >= date('now','-12 months') GROUP BY regel_id")
+    return {r["regel_id"]: {"n": r["n"], "zuletzt": r["zuletzt"]} for r in rows}
+
+
+def naechste_prioritaet() -> int:
+    r = q1("SELECT COALESCE(MAX(prioritaet), 0) + 10 AS p FROM regel")
+    return r["p"]

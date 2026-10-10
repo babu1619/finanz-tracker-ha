@@ -1,0 +1,78 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_select, person_select, quelle with context %}
+{% block titel %}Buchungen{% endblock %}
+{% block inhalt %}
+<div class="kopf">
+  <h1>Buchungen</h1>
+  <span class="leise">{% if f.monat and f.monat != 'alle' %}Abrechnungsmonat {{ f.monat|monat }}{% else %}alle Monate{% endif %}</span>
+  <div class="rechts">
+    {% if darf_schreiben %}<a class="btn" href="{{ url_for('pruefen.index') }}">Prüf-Modus</a>{% endif %}
+    <a class="btn" href="{{ url_for('buchungen.export', **request.args) }}">CSV exportieren</a>
+  </div>
+</div>
+
+<form method="get" class="karte formreihe">
+  <label class="feld" style="flex:2 1 220px">Suche<input type="search" name="suche" value="{{ f.suche }}" placeholder="Gegenpartei, Zweck, Notiz, Betrag"></label>
+  <label class="feld">Monat
+    <select name="monat"><option value="alle">alle</option>
+      {% for m in monate %}<option value="{{ m }}" {{ 'selected' if f.monat == m }}>{{ m|monat }}</option>{% endfor %}
+      {% if f.monat and f.monat != 'alle' and f.monat not in monate %}<option value="{{ f.monat }}" selected>{{ f.monat|monat }}</option>{% endif %}
+    </select></label>
+  <label class="feld">Konto<select name="konto"><option value="">alle</option>{% for k in konten %}<option value="{{ k.id }}" {{ 'selected' if f.konto == k.id }}>{{ k.name }}</option>{% endfor %}</select></label>
+  <label class="feld">Kategorie (inkl. Unterkategorien)
+    <select name="kategorie"><option value="">alle</option><option value="ohne" {{ 'selected' if f.kategorie == 'ohne' }}>ohne Kategorie</option>
+      {% for k in kategorien %}<option value="{{ k.id }}" {{ 'selected' if f.kategorie == k.id|string }}>{{ '   ' * k.ebene }}{{ k.name }}</option>{% endfor %}</select></label>
+  <label class="feld">Person{{ person_select('person', personen, f.person, 'alle') }}</label>
+  <label class="feld">Status
+    <select name="status"><option value="">alle</option>
+      <option value="ungeprueft" {{ 'selected' if f.status == 'ungeprueft' }}>automatisch, ungeprüft</option>
+      <option value="umbuchung" {{ 'selected' if f.status == 'umbuchung' }}>Umbuchungen</option>
+      <option value="manuell" {{ 'selected' if f.status == 'manuell' }}>manuell zugeordnet</option></select></label>
+  <button class="btn primaer" type="submit">Filtern</button>
+</form>
+
+<form method="post" action="{{ url_for('buchungen.sammel') }}">
+  {{ csrf() }}<input type="hidden" name="zurueck" value="{{ request.full_path }}">
+  {% if darf_schreiben %}
+  <div class="karte formreihe" style="padding:10px 14px">
+    <span id="auswahl-zahl" class="leise" style="min-width:110px">keine ausgewählt</span>
+    <label class="feld" style="flex:0 1 220px">Sammelaktion
+      <select name="aktion" id="sammel-aktion">
+        <option value="kategorie">Kategorie setzen</option><option value="person">Person setzen</option>
+        <option value="monat">Abrechnungsmonat setzen</option><option value="bestaetigen">Als geprüft bestätigen</option>
+        <option value="umbuchung">Als Umbuchung verknüpfen (2 Buchungen)</option></select></label>
+    <label class="feld" data-fuer="kategorie" style="flex:1 1 240px">Kategorie{{ kat_select('kategorie_id', kategorien) }}</label>
+    <label class="feld" data-fuer="person">Person{{ person_select('person_id', personen) }}</label>
+    <label class="feld" data-fuer="monat">Monat<input type="month" name="abrechnungsmonat" value="{{ f.monat if f.monat and f.monat != 'alle' }}" style="min-height:40px"></label>
+    <button class="btn" type="submit">Ausführen</button>
+  </div>
+  {% endif %}
+
+  <div class="karte ohne-rand" style="margin-top:16px">
+    <div class="scroll"><table class="tab" style="min-width:860px">
+      <thead><tr>
+        {% if darf_schreiben %}<th style="width:30px"><input type="checkbox" id="alle" aria-label="Alle auswählen"></th>{% endif %}
+        <th>Datum</th><th>Abr.-Monat</th><th>Konto</th><th>Gegenpartei · Verwendungszweck</th><th>Kategorie</th><th>Person</th><th style="text-align:right">Betrag</th>
+      </tr></thead>
+      <tbody>
+      {% for b in rows %}
+        <tr>
+          {% if darf_schreiben %}<td><input type="checkbox" name="ids" value="{{ b.id }}" aria-label="Buchung auswählen"></td>{% endif %}
+          <td class="mono" style="white-space:nowrap;font-size:13px">{{ b.buchungsdatum|datum }}</td>
+          <td style="white-space:nowrap">{% if b.abrechnungsmonat != b.buchungsdatum[:7] %}<span class="tag info">{{ b.abrechnungsmonat|monat_kurz }}</span>{% else %}<span class="leise">{{ b.abrechnungsmonat|monat_kurz }}</span>{% endif %}</td>
+          <td class="leise" style="white-space:nowrap">{{ b.konto_name }}</td>
+          <td><a href="{{ url_for('buchungen.bearbeiten', bid=b.id, zurueck=request.full_path) }}" style="color:inherit;text-decoration:none"><b>{{ b.gegenpartei or '–' }}</b></a>
+            <div class="leise">{{ b.verwendungszweck|truncate(110) }}</div>{% if b.notiz %}<div class="klein">Notiz: {{ b.notiz }}</div>{% endif %}</td>
+          <td style="font-size:13px">{% if b.ist_umbuchung %}<span class="tag">Umbuchung</span>{% elif b.kat_pfad %}{{ b.kat_pfad }}{% else %}<span class="tag warn">ohne Kategorie</span>{% endif %}{{ quelle(b) }}</td>
+          <td class="leise">{{ b.person_name or '' }}</td>
+          <td class="betrag {{ 'pos' if b.betrag_cent > 0 }}" style="{{ 'color:#56625D' if b.ist_umbuchung }}">{{ b.betrag_cent|euro_vz }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="leer">Keine Buchungen für diese Auswahl.</td></tr>
+      {% endfor %}
+      </tbody>
+      <tfoot><tr><td colspan="{{ 5 if darf_schreiben else 4 }}"><b>{{ summe.n }} Buchungen</b>{% if summe.n > rows|length %} (die ersten {{ rows|length }} angezeigt){% endif %} · Umbuchungen nicht mitgezählt</td>
+        <td colspan="3" class="betrag">Ausgaben {{ summe.aus|euro }} · <span class="pos">Einnahmen {{ summe.ein|euro_vz }}</span></td></tr></tfoot>
+    </table></div>
+  </div>
+</form>
+{% endblock %}

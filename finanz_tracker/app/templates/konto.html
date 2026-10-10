@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, person_select with context %}
+{% block titel %}{{ k.name if k else 'Neues Konto' }}{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('konten.liste') }}">‹ Konten</a></div>
+<div class="reihe">
+  <form method="post" class="karte breit" style="display:flex;flex-direction:column;gap:14px">
+    {{ csrf() }}
+    <h1>{{ k.name if k else 'Neues Konto' }}</h1>
+    <div class="formreihe">
+      <label class="feld" style="flex:2 1 220px">Name<input type="text" name="name" value="{{ k.name if k }}" required></label>
+      <label class="feld">Typ<select name="typ">{% for t, n in typen.items() %}<option value="{{ t }}" {{ 'selected' if k and k.typ == t }}>{{ n }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="formreihe">
+      <label class="feld" style="flex:2 1 240px">IBAN (für automatische Erkennung und Umbuchungen)<input type="text" name="iban" value="{{ k.iban or '' if k }}" class="mono"></label>
+      <label class="feld">Institut<input type="text" name="institut" value="{{ k.institut or '' if k }}"></label>
+    </div>
+    <div class="formreihe">
+      <label class="feld">Eigentümer{{ person_select('eigentuemer_person_id', personen, k.eigentuemer_person_id if k else None, 'gemeinsam') }}</label>
+      <label class="feld">Wer darf es sehen?<select name="sichtbarkeit">
+        <option value="alle" {{ 'selected' if not k or k.sichtbarkeit == 'alle' }}>alle Benutzer</option>
+        <option value="privat" {{ 'selected' if k and k.sichtbarkeit == 'privat' }}>nur Eigentümer (privat)</option></select></label>
+    </div>
+    <div class="formreihe">
+      <label class="feld">Importprofil<select name="importprofil_id"><option value="">– keins –</option>
+        {% for p in profile %}<option value="{{ p.id }}" {{ 'selected' if kp and kp.importprofil_id == p.id }}>{{ p.name }} ({{ p.format|upper }})</option>{% endfor %}</select></label>
+      <label class="feld">Erkennungswert (optional, z. B. letzte Ziffern)<input type="text" name="erkennungswert" value="{{ kp.erkennungswert or '' if kp }}"></label>
+    </div>
+    <div class="formreihe">
+      <label class="feld">Startsaldo (Kontostand vor der ersten importierten Buchung)<input type="text" name="startsaldo" value="{{ '%.2f'|format(k.startsaldo_cent / 100)|replace('.', ',') if k else '0,00' }}" class="mono"></label>
+      <label class="feld">Import-Erinnerung nach Tagen<input type="number" name="import_erinnerung_tage" min="1" max="120" value="{{ k.import_erinnerung_tage if k else 7 }}"></label>
+      <label class="feld">Status<select name="aktiv"><option value="1" {{ 'selected' if not k or k.aktiv }}>aktiv</option><option value="0" {{ 'selected' if k and not k.aktiv }}>deaktiviert</option></select></label>
+    </div>
+    <p class="leise klein" style="margin:0">Enthält der erste Import eine Saldo-Spalte und ist der Startsaldo 0, wird er automatisch aus der Datei berechnet.</p>
+    <div class="formreihe"><button class="btn primaer" type="submit">Speichern</button>
+      {% if not profile %}<a class="btn" href="{{ url_for('importe.profil_neu') }}">Erst ein Importprofil anlegen</a>{% endif %}</div>
+  </form>
+  {% if k %}
+  <form method="post" class="karte schmal" data-frage="Konto wirklich löschen?">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen">
+    <h2>Löschen</h2><p class="leise">Nur möglich, solange das Konto keine Buchungen hat. Sonst deaktivieren.</p>
+    <button class="btn gefahr" type="submit">Konto löschen</button></form>
+  {% endif %}
+</div>
+{% endblock %}

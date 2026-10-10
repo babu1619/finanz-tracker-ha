@@ -1,0 +1,11 @@
+"Konto";"DE12 3456 7890 1234 5678 90"
+"Zeitraum";"01.09.2026 - 08.10.2026"
+"Kontostand";"4.296,95 EUR"
+
+"Buchungstag";"Valutadatum";"Auftraggeber/Empfänger";"Buchungstext";"Verwendungszweck";"IBAN";"Betrag (EUR)";"Saldo (EUR)"
+"02.10.2026";"02.10.2026";"SUPERMARKT MUSTER GMBH";"Kartenzahlung";"Musterstadt 02.10";"DE00111111110000000001";"-86,40";"4.296,95"
+"01.10.2026";"01.10.2026";"MUSTERBANK DARLEHEN";"Lastschrift";"Rate Darlehen 4711";"DE00222222220000000002";"-980,00";"4.383,35"
+"01.10.2026";"01.10.2026";"Benjamin Muster";"Umbuchung";"Übertrag aufs Tagesgeld";"DE98 7654 3210 9876 5432 10";"-500,00";"5.363,35"
+"30.09.2026";"30.09.2026";"ARBEITGEBER MUSTER AG";"Gutschrift";"Gehalt 10/2026";"DE00333333330000000003";"4.120,00";"5.863,35"
+"15.09.2026";"15.09.2026";"SUPERMARKT MUSTER GMBH";"Kartenzahlung";"Musterstadt 15.09";"DE00111111110000000001";"-54,10";"1.743,35"
+"03.09.2026";"03.09.2026";"STREAMING DIENST";"Lastschrift";"Abo 09/2026";"DE00444444440000000004";"-17,99";"1.797,45"

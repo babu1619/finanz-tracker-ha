@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Ersteinrichtung{% endblock %}
+{% block inhalt %}
+<div class="auth">
+  <form method="post" class="karte">
+    {{ csrf() }}
+    <h1>Willkommen</h1>
+    <p class="leise" style="margin:0">Lege den ersten Benutzer an. Er wird Admin und kann danach weitere Familienmitglieder, Konten und Importprofile einrichten.</p>
+    {% if fehler %}<div class="flash warn">{{ fehler }}</div>{% endif %}
+    <label class="feld">Benutzername<input type="text" name="name" required autofocus autocomplete="username"></label>
+    <label class="feld">Dein Name als Person (für die Zuordnung von Buchungen)<input type="text" name="person" placeholder="z. B. Benjamin"></label>
+    <label class="feld">Passwort (mindestens 8 Zeichen)<input type="password" name="passwort" required minlength="8" autocomplete="new-password"></label>
+    <label class="feld">Passwort wiederholen<input type="password" name="passwort2" required minlength="8" autocomplete="new-password"></label>
+    <label class="check"><input type="checkbox" name="startset" value="1" checked> Startset an Kategorien anlegen (lässt sich später beliebig ändern)</label>
+    <button class="btn primaer gross" type="submit">Einrichten</button>
+  </form>
+</div>
+{% endblock %}

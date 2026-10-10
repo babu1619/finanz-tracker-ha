@@ -1,0 +1,76 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_suche, person_select with context %}
+{% block titel %}Prüf-Modus{% endblock %}
+{% block inhalt %}
+<div class="kopf">
+  <h1>Prüf-Modus</h1>
+  {% if b %}<span class="leise">{{ position }} von {{ gesamt }} offenen Buchungen</span>{% endif %}
+  <form method="post" action="{{ url_for('pruefen.neustart') }}" class="rechts">{{ csrf() }}<button class="btn klein" type="submit">Übersprungene wieder anzeigen</button></form>
+</div>
+
+{% if vorschlaege %}
+<section class="karte" id="umbuchungen">
+  <h2>Umbuchungen bestätigen ({{ vorschlaege|length }})</h2>
+  <div style="display:flex;flex-direction:column;gap:10px">
+  {% for v in vorschlaege %}
+    <div class="formreihe" style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;align-items:center">
+      <div style="flex:1 1 240px"><span class="leise">{{ v.a_konto }} · {{ v.a_datum|datum }}</span><br><b>{{ v.a_partei or v.a_zweck|truncate(40) }}</b> <span class="mono">{{ v.a_betrag|euro_vz }}</span></div>
+      <span aria-hidden="true">⇄</span>
+      <div style="flex:1 1 240px"><span class="leise">{{ v.b_konto }} · {{ v.b_datum|datum }}</span><br><b>{{ v.b_partei or v.b_zweck|truncate(40) }}</b> <span class="mono pos">{{ v.b_betrag|euro_vz }}</span></div>
+      <span class="tag">Wahrscheinlichkeit {{ (v.score * 100)|round|int }} %</span>
+      <form method="post" action="{{ url_for('pruefen.umbuchung', vid=v.vid) }}" class="formreihe">{{ csrf() }}
+        <button class="btn primaer klein" name="aktion" value="bestaetigen">Verknüpfen</button>
+        <button class="btn klein" name="aktion" value="ablehnen">Keine Umbuchung</button></form>
+    </div>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if not b %}
+<div class="karte leer"><h2>Alles erledigt</h2><p>Keine offenen Buchungen. Neue kommen mit dem nächsten Import.</p></div>
+{% else %}
+<div class="reihe">
+  <form method="post" action="{{ url_for('pruefen.speichern', bid=b.id) }}" class="breit pruefkarte">
+    {{ csrf() }}
+    <div class="karte">
+      <div class="kopf"><div><div class="leise">{{ b.buchungsdatum|datum }} · {{ b.konto_name }}</div>
+        <div style="font-size:22px;font-weight:600">{{ b.gegenpartei or '–' }}</div>
+        <div class="leise">{{ b.verwendungszweck }}</div></div>
+        <div class="rechts mono" style="font-size:28px;font-weight:600">{{ b.betrag_cent|euro_vz }}</div></div>
+    </div>
+    <div class="karte pruefkarte">
+      {% if vorschlag and vorschlag_pfad %}
+      <div class="vorschlag"><div style="flex:1"><div class="leise">{% if vorschlag.quelle == 'gedaechtnis' %}Vorschlag aus {{ vorschlag.anzahl or 'früheren' }} ähnlichen Buchungen{% elif vorschlag.quelle == 'regel' %}Von einer Regel gesetzt{% else %}Bisherige Zuordnung{% endif %}</div>
+        <b style="font-size:17px">{{ vorschlag_pfad }}</b></div><span class="leise klein">Enter übernimmt</span></div>
+      {% endif %}
+      <label class="feld">Kategorie{{ kat_suche('kategorie_id', kategorien, vorschlag.kategorie_id if vorschlag else None) }}</label>
+      <div class="formreihe">
+        <label class="feld">Person{{ person_select('person_id', personen, vorschlag.person_id if vorschlag else b.person_id) }}</label>
+        <label class="feld">Abrechnungsmonat<select name="abrechnungsmonat">{% for m in monate %}<option value="{{ m }}" {{ 'selected' if m == b.abrechnungsmonat }}>{{ m|monat }}{% if m == b.buchungsdatum[:7] %} (Buchungsmonat){% endif %}</option>{% endfor %}</select></label>
+      </div>
+      <div style="background:var(--bg);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+        <label class="check"><input type="checkbox" name="regel" value="1"> Regel erstellen: künftig automatisch so zuordnen, wenn</label>
+        <div class="formreihe">
+          <select name="regel_feld" style="flex:0 1 200px"><option value="gegenpartei">Gegenpartei</option><option value="verwendungszweck">Verwendungszweck</option></select>
+          <span class="leise">enthält</span>
+          <input type="text" name="regel_text" value="{{ (b.gegenpartei or b.verwendungszweck)[:50] }}" style="flex:1 1 200px">
+        </div>
+      </div>
+      <div class="formreihe">
+        <button class="btn primaer gross" type="submit">Speichern und weiter</button>
+        <button class="btn gross" type="submit" name="aktion" value="ueberspringen" id="ueberspringen" formnovalidate>Überspringen (S)</button>
+        <a class="btn gross" href="{{ url_for('buchungen.bearbeiten', bid=b.id) }}">Details</a>
+      </div>
+    </div>
+  </form>
+  <aside class="karte schmal">
+    <h2>Ähnliche frühere Buchungen</h2>
+    {% if aehnliche %}
+    <table class="tab"><tbody>{% for a in aehnliche %}
+      <tr><td style="padding-left:0">{{ a.buchungsdatum|datum }}<div class="leise">{{ a.kat_pfad or '–' }}{% if a.person_name %} · {{ a.person_name }}{% endif %}</div></td><td class="betrag" style="padding-right:0">{{ a.betrag_cent|euro_vz }}</td></tr>
+    {% endfor %}</tbody></table>
+    {% else %}<p class="leise">Noch keine Buchungen mit dieser Gegenpartei. Mit jeder Bestätigung lernt das Tool dazu.</p>{% endif %}
+  </aside>
+</div>
+{% endif %}
+{% endblock %}

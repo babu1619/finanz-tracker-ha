@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block titel %}{{ titel }}{% endblock %}
+{% block inhalt %}
+<div class="karte leer">
+  <h1>{{ code }} · {{ titel }}</h1>
+  {% if text %}<p>{{ text }}</p>{% endif %}
+  <p><a href="{{ url_for('dashboard.index') }}">Zum Dashboard</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Import{% endblock %}
+{% block inhalt %}
+<div class="kopf"><h1>Datei importieren</h1><span class="leise">CSV-Export vom Bankkonto</span></div>
+<div class="reihe">
+  <form method="post" enctype="multipart/form-data" class="karte breit" style="display:flex;flex-direction:column;gap:14px">
+    {{ csrf() }}
+    <label class="feld">CSV-Datei<input type="file" name="datei" accept=".csv,.txt,text/csv" required></label>
+    <label class="feld">Konto<select name="konto_id">
+      <option value="">automatisch erkennen (über IBAN in der Datei)</option>
+      {% for k in konten %}<option value="{{ k.id }}" {{ 'disabled' if not k.profil_name }}>{{ k.name }}{% if k.profil_name %} · {{ k.profil_name }}{% else %} · kein Importprofil{% endif %}</option>{% endfor %}
+    </select></label>
+    <button class="btn primaer gross" type="submit">Vorschau anzeigen</button>
+    <p class="leise klein" style="margin:0">Es wird noch nichts gespeichert. Die Vorschau zeigt neue und bereits vorhandene Buchungen; überlappende Exporte erzeugen keine Doppelbuchungen.</p>
+  </form>
+  <section class="karte schmal">
+    <div class="kopf"><h2 style="margin:0">Importprofile</h2>{% if user.rolle == 'admin' %}<a class="rechts btn klein" href="{{ url_for('importe.profil_neu') }}">CSV-Profil anlegen</a>{% endif %}</div>
+    <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+    {% for p in profile %}
+      <a class="katzeile" href="{{ url_for('importe.profil', pid=p.id) if user.rolle == 'admin' else '#' }}" style="min-height:44px">
+        <span class="tag {{ 'ok' if p.format == 'csv' else 'info' }}">{{ p.format|upper }}</span>
+        <span style="flex:1"><b>{{ p.name }}</b><br><span class="leise">{{ p.konten or 'keinem Konto zugeordnet' }}</span></span></a>
+    {% else %}<p class="leise">Noch kein Profil. Lege eines mit einer Beispieldatei deiner Bank an – die Spalten ordnest du dabei selbst zu.</p>{% endfor %}
+    </div>
+  </section>
+</div>
+<section class="karte ohne-rand">
+  <h2>Letzte Importe</h2>
+  <div class="scroll"><table class="tab" style="min-width:700px">
+    <thead><tr><th>Zeitpunkt</th><th>Konto</th><th>Datei</th><th style="text-align:right">neu</th><th style="text-align:right">doppelt</th><th>Saldo</th><th></th></tr></thead>
+    <tbody>{% for l in laeufe %}
+      <tr style="{{ 'opacity:.5' if l.rueckgaengig }}">
+        <td class="leise">{{ l.zeitpunkt[:16]|replace('T',' ') }}</td><td>{{ l.konto_name }}</td><td class="leise">{{ l.dateiname }}</td>
+        <td class="betrag">{{ l.anzahl_neu }}</td><td class="betrag" style="font-weight:400">{{ l.anzahl_doppelt }}</td>
+        <td>{% if l.rueckgaengig %}<span class="tag">rückgängig</span>{% elif l.saldo_differenz_cent %}<span class="tag bad">weicht {{ l.saldo_differenz_cent|euro }} ab</span>{% elif l.saldo_datei_cent is not none %}<span class="tag ok">stimmt</span>{% else %}<span class="leise">–</span>{% endif %}</td>
+        <td>{% if not l.rueckgaengig %}<a href="{{ url_for('importe.lauf', lid=l.id) }}">Details</a>{% endif %}</td>
+      </tr>{% else %}<tr><td colspan="7" class="leer">Noch keine Importe.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endblock %}

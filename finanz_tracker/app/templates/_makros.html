@@ -1,0 +1,35 @@
+{% macro csrf() %}<input type="hidden" name="csrf" value="{{ csrf_token }}">{% endmacro %}
+
+{% macro kat_select(name, kategorien, gewaehlt=None, leer='– keine –', id=None, nur_waehlbar=None, gesperrt=()) -%}
+<select name="{{ name }}"{% if id %} id="{{ id }}"{% endif %}>
+  <option value="">{{ leer }}</option>
+  {% for k in kategorien if k.id not in gesperrt %}
+  <option value="{{ k.id }}" {{ 'selected' if gewaehlt == k.id }}>{{ '   ' * k.ebene }}{{ k.name }}{% if k.ebene == 0 and k.wirksame_art != 'ausgabe' %} ({{ k.wirksame_art }}){% endif %}</option>
+  {% endfor %}
+</select>
+{%- endmacro %}
+
+{% macro kat_suche(name, kategorien, gewaehlt=None, id='kat') -%}
+{% set aktuell = (kategorien | selectattr('id', 'equalto', gewaehlt) | list) %}
+<input type="hidden" name="{{ name }}" id="{{ id }}" value="{{ gewaehlt or '' }}">
+<input type="search" list="{{ id }}-liste" data-katsuche="{{ id }}" placeholder="Pfad tippen, z. B. „peu“ oder „lebens“"
+       value="{{ aktuell[0].pfad if aktuell else '' }}" autocomplete="off">
+<datalist id="{{ id }}-liste">
+  {% for k in kategorien %}<option value="{{ k.pfad }}" data-id="{{ k.id }}"></option>{% endfor %}
+</datalist>
+{%- endmacro %}
+
+{% macro person_select(name, personen, gewaehlt=None, leer='– keine –') -%}
+<select name="{{ name }}">
+  <option value="">{{ leer }}</option>
+  {% for p in personen %}<option value="{{ p.id }}" {{ 'selected' if gewaehlt == p.id }}>{{ p.name }}</option>{% endfor %}
+</select>
+{%- endmacro %}
+
+{% macro quelle(b) -%}
+{% if b.ist_umbuchung %}<span class="quelle">Umbuchung</span>
+{% elif b.zuordnung_quelle == 'regel' %}<span class="quelle">Regel{% if b.regel_name %}: {{ b.regel_name }}{% endif %}</span>
+{% elif b.zuordnung_quelle == 'gedaechtnis' and not b.geprueft %}<span class="tag offen">aus früheren Buchungen · ungeprüft</span>
+{% elif b.zuordnung_quelle == 'gedaechtnis' %}<span class="quelle">aus früheren Buchungen</span>
+{% elif b.zuordnung_quelle == 'manuell' %}<span class="quelle">manuell</span>{% endif %}
+{%- endmacro %}
