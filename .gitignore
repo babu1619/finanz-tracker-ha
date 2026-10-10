@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+finanz_tracker/data/
+*.db
+*.db-wal
+*.db-shm
+.venv/
