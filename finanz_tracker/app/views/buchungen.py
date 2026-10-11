@@ -176,7 +176,14 @@ def liste():
                            alle_tags=q("SELECT * FROM tag ORDER BY name"), filter_n=filter_aktiv(f),
                            tag_name=(q1("SELECT name FROM tag WHERE id = ?", (f["tag"],)) or {"name": ""})["name"] if f["tag"] else "",
                            basis={k: v for k, v in f.items() if v not in (None, "")},
+                           gegenkonten=_gegenkonten_liste(),
                            aktive=_aktive_filter(f, konten))
+
+
+def _gegenkonten_liste():
+    sichtbar = auth.sichtbare_konten(nur_aktive=True, mit_darlehen=False)
+    return q(f"SELECT id, name, typ FROM konto WHERE id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) ORDER BY sortierung, name",
+             sichtbar)
 
 
 def _aktive_filter(f, konten) -> list[tuple[str, str]]:
@@ -271,6 +278,23 @@ def sammel():
                 zuordnung.feedback(b, b["kategorie_id"])
                 exe("UPDATE buchung SET geprueft = 1 WHERE id = ?", (i,))
         melde(f"{len(ids)} Buchungen als geprüft bestätigt.")
+    elif aktion == "als_umbuchung":
+        zaehler: dict = {}
+        for i in ids:
+            b = q1("SELECT * FROM buchung WHERE id = ?", (i,))
+            if b["ist_umbuchung"]:
+                continue
+            splits.speichere(b, [])
+            if b["ruecklage_id"]:
+                ruecklagen.entnahme_fuer_buchung(i, None)
+            erg = umbuchungen.markiere(q1("SELECT * FROM buchung WHERE id = ?", (i,)),
+                                       _gegenkonto(request.form.get("gegenkonto"), b))
+            zaehler[erg] = zaehler.get(erg, 0) + 1
+        n = sum(zaehler.values())
+        details = ", ".join(f"{v} {t}" for k, t in (("angelegt", "im Barkonto gegengebucht"), ("verknuepft", "verknüpft"),
+                                                     ("vorgemerkt", "Gegenbuchung folgt beim Import"))
+                            if (v := zaehler.get(k)))
+        melde(f"{n} Buchungen als Umbuchung markiert" + (f" ({details})." if details else "."))
     elif aktion == "umbuchung" and len(ids) == 2:
         a, b = (q1("SELECT * FROM buchung WHERE id = ?", (i,)) for i in ids)
         if a["betrag_cent"] != -b["betrag_cent"] or a["konto_id"] == b["konto_id"]:
@@ -301,10 +325,25 @@ def inline(bid):
         kat = int_oder_none(wert)
         if kat and not q1("SELECT 1 FROM kategorie WHERE id = ?", (kat,)):
             return jsonify(ok=False, meldung="Unbekannte Kategorie."), 400
+        if kat and kategorien.art_map().get(kat) == "umbuchung":
+            return jsonify(ok=False, frage_gegenkonto=True, meldung="Bitte das Gegenkonto wählen."), 409
         zuordnung.feedback(b, kat)
         exe("UPDATE buchung SET kategorie_id = ?, zuordnung_quelle = 'manuell', geprueft = 1, regel_id = NULL, "
             "vorschlag_kategorie_id = NULL WHERE id = ?", (kat, bid))
         anzeige = (q1("SELECT pfad FROM kategorie WHERE id = ?", (kat,)) or {"pfad": ""})["pfad"] if kat else ""
+    elif feld == "umbuchung":
+        if b["ist_umbuchung"]:
+            return jsonify(ok=False, meldung="Ist bereits eine Umbuchung."), 400
+        splits.speichere(b, [])
+        if b["ruecklage_id"]:
+            ruecklagen.entnahme_fuer_buchung(bid, None)
+        ziel = _gegenkonto(wert, b)
+        erg = umbuchungen.markiere(q1("SELECT * FROM buchung WHERE id = ?", (bid,)), ziel)
+        name = (q1("SELECT name FROM konto WHERE id = ?", (ziel,)) or {"name": ""})["name"] if ziel else "Konto außerhalb"
+        anzeige = f"Umbuchung mit {name}"
+        log_aenderung(g.user["id"], "buchung", bid, "inline:umbuchung", {"gegenkonto": ziel, "ergebnis": erg})
+        commit()
+        return jsonify(ok=True, anzeige=anzeige, umbuchung=True, ergebnis=erg, meldung=umbuchungen.MELDUNGEN[erg])
     elif feld == "person":
         pid = int_oder_none(wert)
         if pid and not q1("SELECT 1 FROM person WHERE id = ?", (pid,)):
@@ -319,6 +358,25 @@ def inline(bid):
     log_aenderung(g.user["id"], "buchung", bid, f"inline:{feld}", {"wert": wert})
     commit()
     return jsonify(ok=True, anzeige=anzeige)
+
+
+def _gegenkonto(wert, b):
+    """Formularwert -> Konto-ID oder None (außerhalb). Nur sichtbare, eigene Konten, nicht das eigene."""
+    kid = int_oder_none(wert)
+    if not kid or kid == b["konto_id"] or not auth.konto_sichtbar(kid):
+        return None
+    k = q1("SELECT typ FROM konto WHERE id = ?", (kid,))
+    return kid if k and k["typ"] != "darlehen" else None
+
+
+def _ist_umbuchung_formular(form) -> bool:
+    """Art „Umbuchung“ gewählt – oder die Kategorie „Umbuchung“ (auch ohne JavaScript)."""
+    if form.get("art") == "umbuchung":
+        return True
+    if form.get("art") == "kategorie":
+        return False
+    kat = int_oder_none(form.get("kategorie_id"))
+    return bool(kat) and kategorien.art_map().get(kat) == "umbuchung"
 
 
 def _split_zeilen_aus_formular():
@@ -360,6 +418,17 @@ def bearbeiten(bid):
             commit()
             melde("Buchung gelöscht.")
             return redirect(request.form.get("zurueck") or url_for("buchungen.liste"))
+        elif _ist_umbuchung_formular(request.form):
+            splits.speichere(b, [])
+            m = request.form.get("abrechnungsmonat")
+            exe("UPDATE buchung SET person_id = ?, abrechnungsmonat = ?, notiz = ? WHERE id = ?",
+                (int_oder_none(request.form.get("person_id")), m if ist_monat(m) else b["abrechnungsmonat"],
+                 request.form.get("notiz", "").strip() or None, bid))
+            if b["ruecklage_id"]:
+                ruecklagen.entnahme_fuer_buchung(bid, None)
+            tags.setze(bid, [t for t in request.form.get("tags", "").split(",") if t.strip()])
+            erg = umbuchungen.markiere(q1("SELECT * FROM buchung WHERE id = ?", (bid,)), _gegenkonto(request.form.get("gegenkonto"), b))
+            melde(umbuchungen.MELDUNGEN[erg])
         else:
             try:
                 zeilen = _split_zeilen_aus_formular() if request.form.get("aufteilen") else []
@@ -403,7 +472,8 @@ def bearbeiten(bid):
                            tags=tags.fuer_buchungen([bid]).get(bid, []), alle_tags=q("SELECT name FROM tag ORDER BY name"),
                            ruecklagen=q("SELECT r.id, r.name, k.name AS konto_name FROM ruecklage r JOIN konto k "
                                         "ON k.id = r.traeger_konto_id WHERE r.aktiv = 1 AND r.bezug = 'topf' ORDER BY r.name"),
-                           vorschlag=vorschlag)
+                           vorschlag=vorschlag, gegenkonten=[k for k in _gegenkonten_liste() if k["id"] != b["konto_id"]],
+                           umbuchung_kat=kategorien.umbuchung_kategorie_id())
 
 
 @bp.route("/export.csv")

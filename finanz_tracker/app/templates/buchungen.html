@@ -51,7 +51,8 @@
 {% endcall %}
 
 <datalist id="tagliste">{% for t in alle_tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
-<datalist id="kat-liste">{% for k in kategorien %}<option value="{{ k.pfad }}" data-id="{{ k.id }}"></option>{% endfor %}</datalist>
+<datalist id="kat-liste">{% for k in kategorien %}<option value="{{ k.pfad }}" data-id="{{ k.id }}" data-art="{{ k.wirksame_art }}"></option>{% endfor %}</datalist>
+<template id="gegenkonto-vorlage"><select class="gegenkonto-wahl" aria-label="Gegenkonto der Umbuchung"><option value="">Gegenkonto wählen …</option>{% for k in gegenkonten %}<option value="{{ k.id }}">{{ k.name }}{{ ' (Gegenbuchung automatisch)' if k.typ == 'bargeld' }}</option>{% endfor %}<option value="extern">außerhalb des Tools</option></select></template>
 {% if aktive %}
 <div class="chips filterchips" aria-label="Aktive Filter">{% for schluessel, text in aktive %}<a href="{{ url_for('buchungen.liste', **basis|dict_ohne([schluessel])) }}" title="Filter entfernen">{{ text }} <span aria-hidden="true">✕</span></a>{% endfor %}
   <a href="{{ url_for('buchungen.liste', monat=f.monat or 'alle', sort=f.sort or None) }}" class="leise">alle Filter entfernen</a></div>
@@ -68,7 +69,9 @@
         <option value="monat">Abrechnungsmonat setzen</option><option value="verteilung">Auf Monate verteilen</option>
         <option value="tag">Tag hinzufügen</option><option value="tag_weg">Tag entfernen</option>
         <option value="bestaetigen">Als geprüft bestätigen</option>
-        <option value="umbuchung">Als Umbuchung verknüpfen (2 Buchungen)</option></select></label>
+        <option value="als_umbuchung">Als Umbuchung markieren (Gegenkonto wählen)</option>
+        <option value="umbuchung">Zwei Buchungen als Umbuchung verknüpfen</option></select></label>
+    <label class="feld" data-fuer="als_umbuchung">Gegenkonto<select name="gegenkonto">{% for k in gegenkonten %}<option value="{{ k.id }}">{{ k.name }}{{ ' (Gegenbuchung automatisch)' if k.typ == 'bargeld' }}</option>{% endfor %}<option value="extern">außerhalb des Tools</option></select></label>
     <label class="feld" data-fuer="kategorie" style="flex:1 1 240px">Kategorie{{ kat_select('kategorie_id', kategorien) }}</label>
     <label class="feld" data-fuer="person">Person{{ person_select('person_id', personen) }}</label>
     <label class="feld" data-fuer="monat">Monat<input type="month" name="abrechnungsmonat" value="{{ f.monat if f.monat and f.monat != 'alle' }}" style="min-height:40px"></label>

@@ -28,6 +28,19 @@
   <form method="post" class="karte schmal" style="display:flex;flex-direction:column;gap:12px" id="buchung-form">
     {{ csrf() }}<input type="hidden" name="zurueck" value="{{ zurueck }}">
     <h2 style="margin:0">Zuordnen</h2>
+    <div class="umschalter gross" role="radiogroup" aria-label="Art der Buchung">
+      <label><input type="radio" name="art" value="kategorie" checked data-art> {{ 'Ausgabe' if b.betrag_cent < 0 else 'Einnahme' }}</label>
+      <label><input type="radio" name="art" value="umbuchung" data-art> Umbuchung</label>
+    </div>
+    <div data-art-fuer="umbuchung" hidden style="display:flex;flex-direction:column;gap:6px">
+      <label class="feld">Gegenkonto
+        <select name="gegenkonto">
+          {% for k in gegenkonten %}<option value="{{ k.id }}">{{ k.name }}{{ ' (Gegenbuchung wird automatisch angelegt)' if k.typ == 'bargeld' }}</option>{% endfor %}
+          <option value="extern">Konto außerhalb des Tools (z. B. Depot)</option>
+        </select></label>
+      <p class="leise" style="margin:0">Umbuchungen zählen nicht als {{ 'Ausgabe' if b.betrag_cent < 0 else 'Einnahme' }}. Ins Barkonto wird die Gegenbuchung automatisch angelegt; bei anderen Konten wird eine vorhandene Gegenbuchung verknüpft oder beim nächsten Import.</p>
+    </div>
+    <div data-art-fuer="kategorie" style="display:flex;flex-direction:column;gap:12px">
     <div id="einzelkategorie" {{ 'hidden' if split_liste or split_offen }}>
       <label class="feld">Kategorie{{ kat_suche('kategorie_id', kategorien, b.kategorie_id if not split_liste else None) }}</label>
     </div>
@@ -52,18 +65,19 @@
         <span class="leise" id="split-status" aria-live="polite"></span>
       </div>
     </fieldset>
+    </div>
     <label class="feld">Person{{ person_select('person_id', personen, b.person_id) }}</label>
     <div class="formreihe">
       <label class="feld">Abrechnungsmonat
         <select name="abrechnungsmonat">{% for m in monate %}<option value="{{ m }}" {{ 'selected' if m == b.abrechnungsmonat }}>{{ m|monat }}{% if m == b.buchungsdatum[:7] %} (Buchungsmonat){% endif %}</option>{% endfor %}</select></label>
-      <label class="feld">Verteilen auf
+      <label class="feld" data-art-fuer="kategorie">Verteilen auf
         <select name="verteilung_monate">{% for v in [1,2,3,4,6,12,24] %}<option value="{{ v }}" {{ 'selected' if v == b.verteilung_monate }}>{{ 'nicht verteilen' if v == 1 else v ~ ' Monate' }}</option>{% endfor %}
           {% if b.verteilung_monate not in [1,2,3,4,6,12,24] %}<option value="{{ b.verteilung_monate }}" selected>{{ b.verteilung_monate }} Monate</option>{% endif %}</select></label>
     </div>
     <label class="feld">Tags (mit Komma trennen)<input type="text" name="tags" value="{{ tags|map(attribute='name')|join(', ') }}" list="tag-vorschlaege" placeholder="z. B. Urlaub Italien 2026, Steuer 2026" data-mehrfach></label>
     <datalist id="tag-vorschlaege">{% for t in alle_tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
     {% if b.betrag_cent < 0 and ruecklagen %}
-    <label class="feld">Bezahlt aus Rücklage<select name="ruecklage_id"><option value="">– nein –</option>{% for r in ruecklagen %}<option value="{{ r.id }}" {{ 'selected' if b.ruecklage_id == r.id }}>{{ r.name }} ({{ r.konto_name }})</option>{% endfor %}</select></label>
+    <label class="feld" data-art-fuer="kategorie">Bezahlt aus Rücklage<select name="ruecklage_id"><option value="">– nein –</option>{% for r in ruecklagen %}<option value="{{ r.id }}" {{ 'selected' if b.ruecklage_id == r.id }}>{{ r.name }} ({{ r.konto_name }})</option>{% endfor %}</select></label>
     {% else %}<input type="hidden" name="ruecklage_id" value="{{ b.ruecklage_id or '' }}">{% endif %}
     <label class="feld">Notiz<input type="text" name="notiz" value="{{ b.notiz or '' }}" placeholder="optional"></label>
     <div class="formreihe">

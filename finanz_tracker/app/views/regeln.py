@@ -117,7 +117,15 @@ def neu():
                 bed.append({"feld": "gegenpartei", "op": "enthaelt", "wert": b["gegenpartei"][:60]})
             elif b["verwendungszweck"]:
                 bed.append({"feld": "verwendungszweck", "op": "enthaelt", "wert": b["verwendungszweck"][:60]})
-            if b["kategorie_id"]:
+            if b["ist_umbuchung"]:
+                akt["als_umbuchung"] = True
+                ziel = b["umbuchung_konto_id"]
+                if not ziel and b["umbuchung_partner_id"]:
+                    p = q1("SELECT konto_id FROM buchung WHERE id = ?", (b["umbuchung_partner_id"],))
+                    ziel = p["konto_id"] if p else None
+                if ziel:
+                    akt["umbuchung_konto_id"] = ziel
+            elif b["kategorie_id"]:
                 akt["kategorie_id"] = b["kategorie_id"]
             if b["person_id"]:
                 akt["person_id"] = b["person_id"]

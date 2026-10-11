@@ -551,6 +551,67 @@ class Ablauf(unittest.TestCase):
         db.execute("DELETE FROM buchung WHERE dedup_hash = 'v031-a'")
         db.commit()
 
+        # 0.3.2: dieselbe Umbuchung auch auf der Detailseite, direkt in der Tabelle und als Sammelaktion
+        import json
+
+        def neue(hash_, betrag=-5000):
+            i = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                           "abrechnungsmonat, dedup_hash) VALUES (1, '2026-10-09', ?, 'GA AUSZAHLUNG', '', 'ga auszahlung', "
+                           "'2026-10', ?)", (betrag, hash_)).lastrowid
+            db.commit()
+            return i
+
+        def gegen(bid):
+            return db.execute("SELECT g.konto_id, g.betrag_cent, g.auto_gegenbuchung FROM buchung b "
+                              "JOIN buchung g ON g.id = b.umbuchung_partner_id WHERE b.id = ?", (bid,)).fetchone()
+
+        d1 = neue("v032-a")
+        html = self.get(f"/buchungen/{d1}")
+        self.assertIn('name="gegenkonto"', html)
+        self.assertIn("Gegenbuchung wird automatisch angelegt", html)
+        html = self.post(f"/buchungen/{d1}", {"art": "umbuchung", "gegenkonto": str(bar), "abrechnungsmonat": "2026-10",
+                                              "tags": "", "notiz": ""}, von=f"/buchungen/{d1}")
+        self.assertIn("automatisch angelegt", html)
+        self.assertEqual(tuple(gegen(d1)), (bar, 5000, 1))
+        # ohne JavaScript: Kategorie „Umbuchung“ gewählt reicht ebenfalls
+        d2 = neue("v032-b", -7000)
+        uk = db.execute("SELECT id FROM kategorie WHERE art = 'umbuchung'").fetchone()["id"]
+        self.post(f"/buchungen/{d2}", {"kategorie_id": str(uk), "gegenkonto": str(bar), "abrechnungsmonat": "2026-10"},
+                  von=f"/buchungen/{d2}")
+        self.assertEqual(tuple(gegen(d2)), (bar, 7000, 1))
+
+        # direkt in der Tabelle
+        d3 = neue("v032-c", -3000)
+        self.get("/buchungen/?monat=alle")
+        r = self.c.post(f"/buchungen/{d3}/inline", data=json.dumps({"feld": "kategorie", "wert": str(uk)}),
+                        content_type="application/json", headers={"X-CSRF": self._csrf})
+        self.assertEqual(r.status_code, 409)
+        self.assertTrue(r.get_json()["frage_gegenkonto"])
+        r = self.c.post(f"/buchungen/{d3}/inline", data=json.dumps({"feld": "umbuchung", "wert": str(bar)}),
+                        content_type="application/json", headers={"X-CSRF": self._csrf})
+        self.assertEqual(r.get_json()["ergebnis"], "angelegt")
+        self.assertEqual(tuple(gegen(d3)), (bar, 3000, 1))
+        html = self.get("/buchungen/?monat=alle")
+        self.assertIn('id="gegenkonto-vorlage"', html)
+
+        # Sammelaktion
+        d4, d5 = neue("v032-d", -1000), neue("v032-e", -2000)
+        html = self.post("/buchungen/sammel", {"ids": [str(d4), str(d5)], "aktion": "als_umbuchung", "gegenkonto": str(bar),
+                                               "zurueck": "/buchungen/?monat=alle"}, von="/buchungen/?monat=alle")
+        self.assertIn("2 Buchungen als Umbuchung markiert (2 im Barkonto gegengebucht)", html)
+        self.assertEqual(tuple(gegen(d5)), (bar, 2000, 1))
+        with self.app.app_context():
+            self.assertEqual(importer.kontostand(bar), 5000 + 7000 + 3000 + 1000 + 2000)
+        # Regel aus einer Umbuchung übernimmt Gegenkonto
+        html = self.get(f"/regeln/neu?von_buchung={d1}")
+        self.assertIn(f'<option value="{bar}" selected', html)
+        for i in (d1, d2, d3, d4, d5):
+            self.post(f"/buchungen/{i}", {"aktion": "umbuchung_loesen"}, von=f"/buchungen/{i}")
+        for i in (d1, d2, d3, d4, d5):
+            db.execute("DELETE FROM buchung WHERE id = ?", (i,))
+        db.commit()
+        self.assertIsNone(db.execute("SELECT 1 FROM buchung WHERE konto_id = ?", (bar,)).fetchone())
+
     def test_csrf(self):
         r = self.c.post("/login", data={"name": "x", "passwort": "y"})
         self.assertEqual(r.status_code, 400)

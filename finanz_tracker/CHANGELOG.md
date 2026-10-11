@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.3.2 – Oktober 2026
+
+- Umbuchung mit Gegenkonto (inkl. automatischer Gegenbuchung im Barkonto) jetzt auch auf der Detailseite einer Buchung (Umschalter Ausgabe/Umbuchung), direkt in der Buchungstabelle (Kategorie „Umbuchung“ wählen → Gegenkonto auswählen) und als Sammelaktion „Als Umbuchung markieren“
+- „Regel daraus erstellen“ übernimmt bei Umbuchungen das Gegenkonto
+
 ## 0.3.1 – Oktober 2026
 
 - Barkonto: Wird eine Abbuchung als Umbuchung mit Gegenkonto „Bargeld“ gespeichert, legt das Tool die Gegenbuchung im Barkonto automatisch an – kein manuelles Eintragen der Abhebung mehr nötig. Wird die Umbuchung gelöst, verschwindet sie wieder.

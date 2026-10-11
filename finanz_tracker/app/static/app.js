@@ -185,7 +185,8 @@ document.addEventListener("DOMContentLoaded", () => {
       pruefe();
     });
     document.getElementById("buchung-form").addEventListener("submit", (e) => {
-      if (box.checked && summe() !== ziel) { e.preventDefault(); pruefe(); status.scrollIntoView({ block: "center" }); }
+      const sichtbar = !splitEditor.closest("[hidden]");
+      if (box.checked && sichtbar && summe() !== ziel) { e.preventDefault(); pruefe(); status.scrollIntoView({ block: "center" }); }
     });
     umschalten();
   }
@@ -225,6 +226,7 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify({ feld: feldBox.dataset.feld, wert: wert }),
       });
       const d = await r.json().catch(() => ({}));
+      if (d.frage_gegenkonto) { feldBox.classList.remove("laedt"); frageGegenkonto(feldBox); return; }
       if (!r.ok || !d.ok) throw new Error(d.meldung || "Speichern fehlgeschlagen");
       if (feldBox.dataset.feld !== "person") eingabe.value = d.anzeige || "";
       eingabe.dataset.alt = eingabe.value;
@@ -241,6 +243,39 @@ document.addEventListener("DOMContentLoaded", () => {
       feldBox.classList.remove("laedt");
     }
   }
+  // Umbuchung direkt in der Tabelle: Gegenkonto auswählen, dann speichern (Barkonto: Gegenbuchung entsteht automatisch)
+  function frageGegenkonto(box) {
+    const vorlage = document.getElementById("gegenkonto-vorlage");
+    if (!vorlage || box.querySelector(".gegenkonto-wahl")) return;
+    const wahl = vorlage.content.firstElementChild.cloneNode(true);
+    box.appendChild(wahl);
+    wahl.focus();
+    const eingabe = box.querySelector(".inline-eingabe");
+    const abbrechen = () => { wahl.remove(); eingabe.value = eingabe.dataset.alt; };
+    wahl.addEventListener("keydown", (e) => { if (e.key === "Escape") abbrechen(); });
+    wahl.addEventListener("change", async () => {
+      if (!wahl.value) return;
+      box.classList.add("laedt");
+      try {
+        const r = await fetch(`/buchungen/${box.dataset.bid}/inline`, {
+          method: "POST", headers: { "Content-Type": "application/json", "X-CSRF": csrf },
+          body: JSON.stringify({ feld: "umbuchung", wert: wahl.value }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw new Error(d.meldung || "Speichern fehlgeschlagen");
+        const zelle = box.closest("td");
+        zelle.innerHTML = "";
+        const tag = document.createElement("span"); tag.className = "tag"; tag.textContent = "Umbuchung";
+        const info = document.createElement("span"); info.className = "quelle"; info.textContent = d.anzeige.replace("Umbuchung ", "");
+        zelle.append(tag, info);
+        const zeile = zelle.closest("tr");
+        zeile.querySelectorAll(".betrag").forEach((x) => { x.style.color = "#56625D"; });
+        zeile.classList.add("gespeichert");
+      } catch (e) {
+        box.classList.add("fehler"); eingabe.title = e.message; abbrechen();
+      } finally { box.classList.remove("laedt"); }
+    });
+  }
   document.querySelectorAll(".inline-feld").forEach((box) => {
     const eingabe = box.querySelector(".inline-eingabe");
     eingabe.dataset.alt = eingabe.value;
@@ -251,6 +286,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (eingabe.value === eingabe.dataset.alt) return;
         const id = katId(eingabe.value);
         if (id === null) { box.classList.add("fehler"); eingabe.title = "Bitte eine Kategorie aus der Liste wählen"; return; }
+        const opt = Array.from(katListe.options).find((o) => o.value === eingabe.value);
+        if (opt && opt.dataset.art === "umbuchung") { frageGegenkonto(box); return; }
         speichereInline(box, id || "");
       };
       eingabe.addEventListener("change", fertig);
@@ -283,6 +320,16 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") schliesseFilter(); });
   window.addEventListener("scroll", () => filterDetails.filter((d) => d.open).forEach(platziere), { passive: true });
   document.querySelectorAll(".scroll").forEach((s) => s.addEventListener("scroll", schliesseFilter, { passive: true }));
+
+  // ---- Wird in einem Formular die Kategorie „Umbuchung“ gewählt, auf Art „Umbuchung“ umschalten
+  document.querySelectorAll("[data-katsuche]").forEach((eingabe) => {
+    const liste = document.getElementById(eingabe.getAttribute("list"));
+    eingabe.addEventListener("change", () => {
+      const opt = liste && Array.from(liste.options).find((o) => o.value === eingabe.value);
+      const umb = document.querySelector("input[data-art][value=umbuchung]");
+      if (opt && opt.dataset.art === "umbuchung" && umb) { umb.checked = true; umb.dispatchEvent(new Event("change")); }
+    });
+  });
 
   // ---- Prüf-Modus einzeln: Art (Kategorie/Umbuchung) und Tag-Vorschläge
   const artFelder = document.querySelectorAll("input[data-art]");

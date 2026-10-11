@@ -176,6 +176,8 @@ tr:hover .inline-eingabe, .inline-eingabe:focus { border-color: #C9D1CD !importa
 .inline-feld.ok .inline-eingabe { border-color: var(--accent) !important; background: var(--accent-soft) !important; }
 .inline-feld.fehler .inline-eingabe { border-color: var(--bad) !important; background: var(--bad-bg) !important; }
 .buchungstab td.sp-kat { min-width: 210px; }
+.gegenkonto-wahl { width: 100%; margin-top: 4px; min-height: 34px; font-size: 13px; border-color: var(--accent) !important; }
+tr.gespeichert td { transition: background 1s; background: var(--accent-soft); }
 .buchungstab td.sp-tags { min-width: 140px; }
 
 /* Umschalter (Einzeln/Tabelle, Ausgabe/Umbuchung) */

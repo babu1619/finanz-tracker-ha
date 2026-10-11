@@ -15,7 +15,7 @@
 <input type="search" list="{{ id }}-liste" data-katsuche="{{ id }}" placeholder="Pfad tippen, z. B. „peu“ oder „lebens“"
        value="{{ aktuell[0].pfad if aktuell else '' }}" autocomplete="off">
 <datalist id="{{ id }}-liste">
-  {% for k in kategorien %}<option value="{{ k.pfad }}" data-id="{{ k.id }}"></option>{% endfor %}
+  {% for k in kategorien %}<option value="{{ k.pfad }}" data-id="{{ k.id }}" data-art="{{ k.wirksame_art }}"></option>{% endfor %}
 </datalist>
 {%- endmacro %}
 

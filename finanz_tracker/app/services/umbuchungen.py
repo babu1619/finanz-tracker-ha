@@ -98,6 +98,14 @@ def markiere(b, gegenkonto_id: int | None) -> str:
     return "vorgemerkt" if gegenkonto_id else "extern"
 
 
+MELDUNGEN = {
+    "verknuepft": "Als Umbuchung mit der vorhandenen Gegenbuchung verknüpft.",
+    "angelegt": "Als Umbuchung gespeichert; die Gegenbuchung im Barkonto wurde automatisch angelegt.",
+    "vorgemerkt": "Als Umbuchung markiert. Die Gegenbuchung wird beim nächsten Import des Gegenkontos automatisch verknüpft.",
+    "extern": "Als Umbuchung an ein Konto außerhalb des Tools markiert.",
+}
+
+
 def lege_gegenbuchung_an(b, ziel) -> int:
     """Gegenbuchung im Konto ohne Import (Bargeld) anlegen und verknüpfen, z. B. −200 € Geldautomat -> +200 € Bargeld."""
     quelle = q1("SELECT name FROM konto WHERE id = ?", (b["konto_id"],))
