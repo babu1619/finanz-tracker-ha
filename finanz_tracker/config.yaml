@@ -1,13 +1,13 @@
 name: Finanz-Tracker
-version: "0.2.1"
+version: "0.2.2"
 slug: finanz_tracker
 description: Haushaltsbuch für die Familie – Import, Kategorien, Budgets, Sparziele, Darlehen; als App installierbar
-url: https://github.com/babu1619/finanz-tracker
+url: https://github.com/DEIN-GITHUB-NAME/finanz-tracker
 arch:
   - aarch64
   - amd64
 # Optional vorgebaute Images (siehe README, Abschnitt „Werkzeuge“): Zeile einschalten
-# image: "ghcr.io/babu1619/finanz-tracker-{arch}"
+# image: "ghcr.io/DEIN-GITHUB-NAME/finanz-tracker-{arch}"
 init: false
 startup: application
 boot: auto

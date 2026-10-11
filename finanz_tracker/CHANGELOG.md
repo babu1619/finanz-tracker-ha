@@ -1,5 +1,9 @@
 # Änderungen
 
+## 0.2.2 – Oktober 2026
+
+- Kopfzeile mit den Reitern bleibt beim Scrollen oben fixiert (PC und Handy)
+
 ## 0.2.1 – Oktober 2026
 
 - Werkzeuge wie beim Körperdaten-Tracker: `tools/einrichten.py` (GitHub-Namen eintragen), `tools/pruefen.py` (Konfiguration, Code, Migrationen, Versionen und Tests prüfen), `tools/release.py` (neue Version veröffentlichen)

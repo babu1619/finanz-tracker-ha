@@ -7,6 +7,7 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+html { scroll-padding-top: 130px; }  /* Sprungziele (#anker) nicht unter der fixierten Kopfzeile verstecken */
 body { margin: 0; background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.45; }
 a { color: var(--accent); } a:hover { color: var(--accent-dark); }
 .mono, .betrag { font-family: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace; }
@@ -15,7 +16,7 @@ a { color: var(--accent); } a:hover { color: var(--accent-dark); }
 .leise { color: var(--quiet); font-size: 13px; }
 .klein { font-size: 12px; }
 
-header.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 10px 24px; background: var(--head); color: #fff; }
+header.top { position: sticky; top: 0; z-index: 40; box-shadow: 0 2px 8px rgba(0,0,0,.18); display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 10px 24px; background: var(--head); color: #fff; }
 header.top .logo { font-size: 18px; font-weight: 600; color: #fff; text-decoration: none; }
 header.top nav { display: flex; flex-wrap: wrap; gap: 2px; }
 header.top nav a { padding: 9px 12px; border-radius: 6px; color: #C9D3CF; text-decoration: none; }
