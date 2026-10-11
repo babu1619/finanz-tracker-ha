@@ -222,6 +222,7 @@ class Ablauf(unittest.TestCase):
         # 10b. Version 0.2: Aufteilung, Verteilung, Tags, Budgets, Rücklagen, Darlehen, Auswertung, Schnellerfassung
         self._phase34(db, markt, kat_lebensmittel)
         self._v03(db, kat_lebensmittel)
+        self._v031(db)
 
         # 11. Import rückgängig
         lauf = db.execute("SELECT id FROM importlauf WHERE anzahl_neu = 2").fetchone()["id"]
@@ -505,6 +506,49 @@ class Ablauf(unittest.TestCase):
         self.get("/pruefen/?ansicht=einzeln")
         for x in ("v03-a", "v03-b", "v03-c", "v03-d"):
             db.execute("DELETE FROM buchung WHERE dedup_hash = ?", (x,))
+        db.commit()
+
+    def _v031(self, db):
+        """0.3.1: Umbuchung ins Barkonto legt die Gegenbuchung dort automatisch an (Prüf-Modus und Regel)."""
+        from app.services import importer, statistik, zuordnung
+        self.post("/konten/neu", {"name": "Bargeld", "typ": "bargeld", "startsaldo": "0", "sichtbarkeit": "alle", "aktiv": "1"})
+        bar = db.execute("SELECT id FROM konto WHERE typ = 'bargeld'").fetchone()["id"]
+        ab = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                        "abrechnungsmonat, dedup_hash) VALUES (1, '2026-10-09', -20000, 'GELDAUTOMAT SPARKASSE', 'Auszahlung', "
+                        "'geldautomat sparkasse', '2026-10', 'v031-a')").lastrowid
+        db.commit()
+        html = self.post(f"/pruefen/{ab}", {"art": "umbuchung", "gegenkonto": str(bar), "abrechnungsmonat": "2026-10"},
+                         von="/pruefen/?ansicht=einzeln")
+        self.assertIn("Gegenbuchung im Barkonto wurde automatisch angelegt", html)
+        g = db.execute("SELECT * FROM buchung WHERE konto_id = ?", (bar,)).fetchone()
+        self.assertEqual((g["betrag_cent"], g["ist_umbuchung"], g["auto_gegenbuchung"], g["umbuchung_partner_id"]),
+                         (20000, 1, 1, ab))
+        self.assertEqual(db.execute("SELECT umbuchung_partner_id FROM buchung WHERE id = ?", (ab,)).fetchone()[0], g["id"])
+        with self.app.app_context():
+            self.assertEqual(importer.kontostand(bar), 20000)
+            vorher = statistik.monatswerte([1, 2, bar], "2026-10")
+        self.assertIn("Automatisch angelegte Gegenbuchung", self.get(f"/buchungen/{g['id']}"))
+        # Lösen entfernt die automatisch angelegte Gegenbuchung wieder
+        self.post(f"/buchungen/{ab}", {"aktion": "umbuchung_loesen"}, von=f"/buchungen/{ab}")
+        self.assertIsNone(db.execute("SELECT 1 FROM buchung WHERE konto_id = ?", (bar,)).fetchone())
+        self.assertEqual(db.execute("SELECT ist_umbuchung FROM buchung WHERE id = ?", (ab,)).fetchone()[0], 0)
+
+        # Regel: Geldautomat -> Umbuchung mit Barkonto (künftige Abhebungen ganz ohne Prüf-Modus)
+        self.post("/regeln/neu", {"name": "Geldautomat", "feld0": "gegenpartei", "op0": "enthaelt", "wert0": "geldautomat",
+                                  "als_umbuchung": "1", "umbuchung_konto_id": str(bar), "aktion": "speichern", "aktiv": "1"})
+        self.assertIn("als Umbuchung mit Bargeld", self.get("/regeln/"))
+        with self.app.app_context():
+            from app.db import commit
+            zuordnung.ordne_zu([ab])
+            commit()
+            self.assertEqual(importer.kontostand(bar), 20000)
+            nachher = statistik.monatswerte([1, 2, bar], "2026-10")
+        self.assertEqual((vorher["einnahmen"], vorher["ausgaben"]), (nachher["einnahmen"], nachher["ausgaben"]))
+        self.assertEqual(db.execute("SELECT zuordnung_quelle FROM buchung WHERE konto_id = ?", (bar,)).fetchone()[0], "umbuchung")
+        # Import-artige Löschung räumt mit auf
+        self.post(f"/buchungen/{ab}", {"aktion": "umbuchung_loesen"}, von=f"/buchungen/{ab}")
+        db.execute("DELETE FROM regel WHERE name = 'Geldautomat'")
+        db.execute("DELETE FROM buchung WHERE dedup_hash = 'v031-a'")
         db.commit()
 
     def test_csrf(self):

@@ -22,7 +22,8 @@ def _beschreibe(regel, kat_pfade, personen, konten):
     a = jload(regel["aktionen"], {})
     akt = []
     if a.get("als_umbuchung"):
-        akt.append("als Umbuchung")
+        ziel = konten.get(int(a["umbuchung_konto_id"])) if a.get("umbuchung_konto_id") else None
+        akt.append(f"als Umbuchung mit {ziel}" if ziel else "als Umbuchung")
     elif a.get("kategorie_id"):
         akt.append(kat_pfade.get(int(a["kategorie_id"]), "?"))
     if a.get("person_id"):
@@ -69,6 +70,8 @@ def _aus_formular():
     akt = {}
     if request.form.get("als_umbuchung"):
         akt["als_umbuchung"] = True
+        if int_oder_none(request.form.get("umbuchung_konto_id")):
+            akt["umbuchung_konto_id"] = int(request.form["umbuchung_konto_id"])
     elif int_oder_none(request.form.get("kategorie_id")):
         akt["kategorie_id"] = int(request.form["kategorie_id"])
     if int_oder_none(request.form.get("person_id")):

@@ -145,7 +145,7 @@ def tabelle():
 def tabelle_speichern():
     ids = [int(i) for i in request.form.getlist("ids") if i.isdigit()]
     sichtbar = set(auth.sichtbare_konten())
-    n = {"kategorie": 0, "verknuepft": 0, "vorgemerkt": 0, "extern": 0, "ohne": 0}
+    n = {"kategorie": 0, "verknuepft": 0, "angelegt": 0, "vorgemerkt": 0, "extern": 0, "ohne": 0}
     for bid in ids:
         b = q1("SELECT * FROM buchung WHERE id = ?", (bid,))
         if not b or b["konto_id"] not in sichtbar or b["ist_umbuchung"]:
@@ -164,9 +164,14 @@ def tabelle_speichern():
     teile = []
     if n["kategorie"]:
         teile.append(f"{n['kategorie']} zugeordnet")
-    umb = n["verknuepft"] + n["vorgemerkt"] + n["extern"]
+    umb = n["verknuepft"] + n["angelegt"] + n["vorgemerkt"] + n["extern"]
     if umb:
-        teile.append(f"{umb} als Umbuchung ({n['verknuepft']} mit Gegenbuchung verknüpft)")
+        zusatz = []
+        if n["verknuepft"]:
+            zusatz.append(f"{n['verknuepft']} mit Gegenbuchung verknüpft")
+        if n["angelegt"]:
+            zusatz.append(f"{n['angelegt']} im Barkonto gegengebucht")
+        teile.append(f"{umb} als Umbuchung" + (f" ({', '.join(zusatz)})" if zusatz else ""))
     if n["ohne"]:
         teile.append(f"{n['ohne']} ohne Kategorie übersprungen")
     melde(("Gespeichert: " + ", ".join(teile) + ".") if teile else "Keine Buchung ausgewählt.", "ok" if teile else "warn")
@@ -195,6 +200,8 @@ def speichern(bid):
                           int_oder_none(gegen) if gegen and gegen != "extern" else None)
     if erg == "verknuepft":
         melde("Als Umbuchung mit der Gegenbuchung verknüpft.")
+    elif erg == "angelegt":
+        melde("Als Umbuchung gespeichert; die Gegenbuchung im Barkonto wurde automatisch angelegt.")
     elif erg == "vorgemerkt":
         melde("Als Umbuchung markiert. Die Gegenbuchung wird beim nächsten Import des Gegenkontos automatisch verknüpft.")
     elif erg == "extern":

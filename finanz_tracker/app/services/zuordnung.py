@@ -96,6 +96,8 @@ def zielwerte(regel, b) -> dict:
         werte["verteilung_monate"] = max(1, min(60, int(a["verteilung_monate"])))
     if a.get("als_umbuchung"):
         werte["ist_umbuchung"] = 1
+        if a.get("umbuchung_konto_id"):
+            werte["umbuchung_konto_id"] = int(a["umbuchung_konto_id"])
         uk = kategorien.umbuchung_kategorie_id()
         if uk:
             werte["kategorie_id"] = uk
@@ -148,6 +150,9 @@ def ordne_zu(buchung_ids: list[int] | None = None, ueberschreiben=False) -> dict
                  w.get("verteilung_monate"), treffer["id"], b["id"]))
             if w.get("tag_id"):
                 exe("INSERT OR IGNORE INTO buchung_tag (buchung_id, tag_id) VALUES (?, ?)", (b["id"], w["tag_id"]))
+            if w.get("umbuchung_konto_id") and w["umbuchung_konto_id"] != b["konto_id"] and not b["umbuchung_partner_id"]:
+                from . import umbuchungen
+                umbuchungen.markiere(q1("SELECT * FROM buchung WHERE id = ?", (b["id"],)), w["umbuchung_konto_id"])
             stat["regel"] += 1
             continue
         if b["ist_umbuchung"]:

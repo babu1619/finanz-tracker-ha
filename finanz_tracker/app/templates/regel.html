@@ -51,7 +51,10 @@
         <label class="feld">Tag setzen<input type="text" name="tag_name" value="{{ tag_name }}" list="regel-tags" placeholder="optional, z. B. Steuer 2026">
           <datalist id="regel-tags">{% for t in alle_tags %}<option value="{{ t.name }}">{% endfor %}</datalist></label>
       </div>
-      <label class="check"><input type="checkbox" name="als_umbuchung" value="1" {{ 'checked' if akt.als_umbuchung }}> Als Umbuchung zu einem eigenen Konto außerhalb des Tools behandeln (z. B. Depot-Sparplan). Nicht für Darlehensraten verwenden – die sind Ausgaben.</label>
+      <label class="check"><input type="checkbox" name="als_umbuchung" value="1" {{ 'checked' if akt.als_umbuchung }}> Als Umbuchung behandeln (zählt nicht als Ausgabe). Nicht für Darlehensraten verwenden – die sind Ausgaben.</label>
+      <label class="feld">Gegenkonto der Umbuchung
+        <select name="umbuchung_konto_id"><option value="">Konto außerhalb des Tools (z. B. Depot-Sparplan)</option>
+          {% for k in konten if k.typ != 'darlehen' %}<option value="{{ k.id }}" {{ 'selected' if akt.umbuchung_konto_id == k.id }}>{{ k.name }}{{ ' – Gegenbuchung wird automatisch angelegt' if k.typ == 'bargeld' }}</option>{% endfor %}</select></label>
     </fieldset>
 
     {% if regel %}<label class="check"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if regel.aktiv }}> Regel aktiv</label>{% else %}<input type="hidden" name="aktiv" value="1">{% endif %}

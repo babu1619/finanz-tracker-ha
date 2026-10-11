@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.3.1 – Oktober 2026
+
+- Barkonto: Wird eine Abbuchung als Umbuchung mit Gegenkonto „Bargeld“ gespeichert, legt das Tool die Gegenbuchung im Barkonto automatisch an – kein manuelles Eintragen der Abhebung mehr nötig. Wird die Umbuchung gelöst, verschwindet sie wieder.
+- Regeln: Umbuchung mit Gegenkonto, z. B. „Gegenpartei enthält Geldautomat“ → Umbuchung ins Barkonto; Abhebungen werden so schon beim Import vollständig gebucht
+- Bereits vorgemerkte Umbuchungen ins Barkonto werden beim Update nachträglich gegengebucht
+- Umbuchungserkennung kennt „Geldautomat“, „Bargeld“ und „Auszahlung“
+
 ## 0.3.0 – Oktober 2026
 
 - Buchungen: Kategorie, Person und Tags direkt in der Tabelle bearbeiten (wird sofort gespeichert); Tags als eigene Spalte

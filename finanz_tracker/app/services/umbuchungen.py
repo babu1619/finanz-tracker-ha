@@ -10,7 +10,10 @@ from ..db import q, q1, exe
 from ..util import norm_iban
 from . import kategorien
 
-STICHWORTE = ("umbuchung", "übertrag", "uebertrag", "kreditkarte", "abrechnung", "eigenes konto", "sparen", "tagesgeld")
+STICHWORTE = ("umbuchung", "übertrag", "uebertrag", "kreditkarte", "abrechnung", "eigenes konto", "sparen", "tagesgeld",
+              "geldautomat", "bargeld", "auszahlung", "bargeldauszahlung", "atm")
+# Konten ohne Import: hier wird die Gegenbuchung einer Umbuchung automatisch angelegt
+AUTO_GEGEN_TYPEN = ("bargeld",)
 
 
 def _eigene_konten():
@@ -70,7 +73,8 @@ def markiere(b, gegenkonto_id: int | None) -> str:
     Mit Gegenkonto: passende Gegenbuchung dort suchen (gleicher Betrag mit umgekehrtem Vorzeichen, ±10 Tage) und
     verknüpfen. Gibt es sie noch nicht, wird das Gegenkonto gemerkt; beim späteren Import wird automatisch verknüpft.
     Ohne Gegenkonto: Umbuchung an ein Konto außerhalb des Tools (z. B. Depot).
-    Rückgabe: 'verknuepft', 'vorgemerkt' oder 'extern'.
+    Ist das Gegenkonto ein Barkonto (ohne Import), wird die Gegenbuchung dort automatisch angelegt.
+    Rückgabe: 'verknuepft', 'angelegt', 'vorgemerkt' oder 'extern'.
     """
     if gegenkonto_id:
         partner = q1("""SELECT * FROM buchung WHERE konto_id = ? AND betrag_cent = ? AND ist_umbuchung = 0
@@ -83,10 +87,34 @@ def markiere(b, gegenkonto_id: int | None) -> str:
             return "verknuepft"
     uk = kategorien.umbuchung_kategorie_id()
     exe("UPDATE buchung SET ist_umbuchung = 1, umbuchung_partner_id = NULL, umbuchung_konto_id = ?, kategorie_id = ?, "
-        "zuordnung_quelle = 'umbuchung', geprueft = 1, regel_id = NULL, vorschlag_kategorie_id = NULL WHERE id = ?",
-        (gegenkonto_id, uk, b["id"]))
+        "zuordnung_quelle = 'umbuchung', geprueft = 1, vorschlag_kategorie_id = NULL "
+        "WHERE id = ?", (gegenkonto_id, uk, b["id"]))
     exe("DELETE FROM umbuchung_vorschlag WHERE buchung_a_id = ? OR buchung_b_id = ?", (b["id"], b["id"]))
+    if gegenkonto_id:
+        ziel = q1("SELECT * FROM konto WHERE id = ?", (gegenkonto_id,))
+        if ziel and ziel["typ"] in AUTO_GEGEN_TYPEN:
+            lege_gegenbuchung_an(b, ziel)
+            return "angelegt"
     return "vorgemerkt" if gegenkonto_id else "extern"
+
+
+def lege_gegenbuchung_an(b, ziel) -> int:
+    """Gegenbuchung im Konto ohne Import (Bargeld) anlegen und verknüpfen, z. B. −200 € Geldautomat -> +200 € Bargeld."""
+    quelle = q1("SELECT name FROM konto WHERE id = ?", (b["konto_id"],))
+    text = ("Abhebung " if b["betrag_cent"] < 0 else "Einzahlung ") + (quelle["name"] if quelle else "")
+    vorhanden = q1("SELECT id FROM buchung WHERE konto_id = ? AND dedup_hash = ?", (ziel["id"], f"gegen:{b['id']}"))
+    if vorhanden:
+        gid = vorhanden["id"]
+    else:
+        gid = exe("""INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key,
+                     abrechnungsmonat, kategorie_id, person_id, dedup_hash, zuordnung_quelle, geprueft, ist_umbuchung,
+                     umbuchung_konto_id, auto_gegenbuchung) VALUES (?,?,?,?,?,'',?,?,?,?,'umbuchung',1,1,?,1)""",
+                  (ziel["id"], b["buchungsdatum"], -b["betrag_cent"], text, "Automatisch aus Umbuchung",
+                   b["abrechnungsmonat"], kategorien.umbuchung_kategorie_id(), b["person_id"], f"gegen:{b['id']}",
+                   b["konto_id"]))
+    exe("UPDATE buchung SET umbuchung_partner_id = ? WHERE id = ?", (gid, b["id"]))
+    exe("UPDATE buchung SET umbuchung_partner_id = ? WHERE id = ?", (b["id"], gid))
+    return gid
 
 
 def _vorgemerkte_partner(b):
@@ -102,6 +130,12 @@ def loese(buchung_id):
     if not b:
         return
     ids = [b["id"]] + ([b["umbuchung_partner_id"]] if b["umbuchung_partner_id"] else [])
+    for i in list(ids):
+        x = q1("SELECT auto_gegenbuchung FROM buchung WHERE id = ?", (i,))
+        if x and x["auto_gegenbuchung"]:
+            exe("UPDATE buchung SET umbuchung_partner_id = NULL WHERE umbuchung_partner_id = ?", (i,))
+            exe("DELETE FROM buchung WHERE id = ?", (i,))
+            ids.remove(i)
     for i in ids:
         exe("UPDATE buchung SET ist_umbuchung = 0, umbuchung_partner_id = NULL, kategorie_id = NULL, "
             "zuordnung_quelle = NULL, geprueft = 0, umbuchung_konto_id = NULL WHERE id = ?", (i,))

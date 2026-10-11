@@ -1,6 +1,6 @@
 # Finanz-Tracker – Installation auf dem Home Assistant Green
 
-Version 0.3.0 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
+Version 0.3.1 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
 Die App ist eine eigenständige, verschlüsselte Webseite (https, Port 8099), die sich auf dem Handy als App installieren lässt;
 Home Assistant dient nur als Host.
 Alle Daten liegen lokal in der SQLite-Datenbank des Add-ons und sind Teil der Home-Assistant-Backups.
@@ -93,6 +93,10 @@ genug Regeln und Erfahrungswerte für eine weitgehend automatische Zuordnung.
   Import automatisch. Umschalter **Tabelle** zeigt alle offenen Buchungen auf einen Blick – Werte zeilenweise ändern
   oder für mehrere angehakte Zeilen auf einmal setzen, dann „Ausgewählte speichern“.
 - **Konten:** Die Spalte „Konto“ bleibt beim seitlichen Scrollen stehen; Bearbeiten über den Stift links.
+- **Bargeld (0.3.1):** Abhebung im Prüf-Modus als „Umbuchung“ mit Gegenkonto „Bargeld“ speichern – die Gegenbuchung
+  im Barkonto entsteht automatisch. Noch bequemer: Regel „Gegenpartei enthält Geldautomat“ → „Als Umbuchung“ mit
+  Gegenkonto „Bargeld“; dann landen Abhebungen schon beim Import im Barkonto. Im Barkonto erfasst du mit „+ Bar“ nur
+  noch die Ausgaben, nicht die Abhebung selbst.
 
 ## Neu in 0.2.0 – kurz erklärt
 
