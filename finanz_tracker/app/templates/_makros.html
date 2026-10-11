@@ -31,5 +31,18 @@
 {% elif b.zuordnung_quelle == 'regel' %}<span class="quelle">Regel{% if b.regel_name %}: {{ b.regel_name }}{% endif %}</span>
 {% elif b.zuordnung_quelle == 'gedaechtnis' and not b.geprueft %}<span class="tag offen">aus früheren Buchungen · ungeprüft</span>
 {% elif b.zuordnung_quelle == 'gedaechtnis' %}<span class="quelle">aus früheren Buchungen</span>
+{% elif b.zuordnung_quelle == 'modell' and not b.geprueft %}<span class="tag offen">Lernmodell{% if b.konfidenz %} {{ (b.konfidenz * 100)|round|int }} %{% endif %} · ungeprüft</span>
+{% elif b.zuordnung_quelle == 'modell' %}<span class="quelle">Lernmodell</span>
 {% elif b.zuordnung_quelle == 'manuell' %}<span class="quelle">manuell</span>{% endif %}
+{%- endmacro %}
+
+{% macro tagliste(liste) -%}
+{% for t in liste or [] %}<a class="tag info" href="{{ url_for('buchungen.liste', tag=t.id, monat='alle') }}" style="text-decoration:none{% if t.farbe %};background:{{ t.farbe }}{% endif %}">#{{ t.name }}</a> {% endfor %}
+{%- endmacro %}
+
+{% macro klappe(id, titel, offen=False, zusatz='') -%}
+<details class="karte klappe" id="{{ id }}" data-merken="{{ id }}"{{ ' open' if offen }}>
+  <summary><span class="klappe-titel">{{ titel }}</span>{% if zusatz %}<span class="leise klappe-zusatz">{{ zusatz }}</span>{% endif %}</summary>
+  <div class="klappe-inhalt">{{ caller() }}</div>
+</details>
 {%- endmacro %}

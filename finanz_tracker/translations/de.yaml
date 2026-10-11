@@ -1,0 +1,21 @@
+configuration:
+  https:
+    name: HTTPS
+    description: Verschlüsselte Verbindung. Nötig, damit Chrome die Seite als App installieren kann.
+  zertifikat:
+    name: Zertifikat
+    description: "eigenes: Das Tool erzeugt eine Heim-CA (einmal auf den Geräten installieren). homeassistant: Zertifikat aus /ssl verwenden (z. B. Let's Encrypt)."
+  zusatz_hostnamen:
+    name: Zusätzliche Adressen
+    description: Weitere Namen oder IPs für das eigene Zertifikat, mit Komma getrennt (z. B. Tailscale-Name). IP-Adressen des Home Assistant werden automatisch ergänzt.
+  certfile:
+    name: Zertifikatsdatei in /ssl
+    description: Nur bei Zertifikat „homeassistant“. Standard fullchain.pem
+  keyfile:
+    name: Schlüsseldatei in /ssl
+    description: Nur bei Zertifikat „homeassistant“. Standard privkey.pem
+  admin_passwort_reset:
+    name: Notfall – Admin-Passwort zurücksetzen
+    description: Neues Passwort (mind. 8 Zeichen) eintragen, Add-on neu starten, danach wieder leeren.
+network:
+  8080/tcp: Weboberfläche

@@ -33,6 +33,8 @@ def parse_euro_eingabe(text) -> int:
         return 0
     if "," in s:
         s = s.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"[+-]?\d{1,3}(\.\d{3})+", s):  # deutsche Tausenderpunkte ohne Komma: 1.000 / 300.000
+        s = s.replace(".", "")
     try:
         d = Decimal(s)
     except InvalidOperation as exc:

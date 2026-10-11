@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block titel %}App & Zertifikat{% endblock %}
+{% block inhalt %}
+<div class="kopf"><h1>App &amp; Zertifikat</h1></div>
+
+<section class="karte">
+  <h2>Status dieser Verbindung</h2>
+  <ul class="pruefpunkte">
+    <li>{% if sicher %}<span class="i ok">✓</span><span>Verschlüsselt (HTTPS) über <b>{{ host }}</b>.</span>
+        {% else %}<span class="i bad">!</span><span>Unverschlüsselt (HTTP). {% if opt.https %}Bitte über <b>https://{{ host }}</b> aufrufen.{% else %}HTTPS ist in den Add-on-Optionen ausgeschaltet.{% endif %}</span>{% endif %}</li>
+    <li id="pruef-vertrauen"><span class="i hint">?</span><span>Prüfe, ob der Browser dem Zertifikat vertraut …</span></li>
+    <li id="pruef-app"><span class="i hint">?</span><span>Prüfe, ob die App installiert werden kann …</span></li>
+  </ul>
+  <div class="formreihe" style="margin-top:12px"><button class="btn primaer" type="button" id="app-installieren" hidden>Als App installieren</button></div>
+</section>
+
+{% if info and opt.zertifikat != 'homeassistant' %}
+<section class="karte">
+  <h2>1. Heim-Zertifikat auf dem Gerät installieren (einmalig)</h2>
+  <p>Das Tool verschlüsselt mit einem eigenen Zertifikat. Damit Browser und Handy ihm ohne Warnung vertrauen – und Chrome die Seite als App installieren lässt – installierst du einmal die <b>Heim-CA</b> des Tools. Sie gilt bis {{ info.bis|string|datum }}; Serverzertifikate erneuert das Tool selbst.</p>
+  <div class="formreihe">
+    <a class="btn primaer" href="{{ url_for('pwa.ca_download') }}">Zertifikat herunterladen (.crt)</a>
+    <a class="btn" href="{{ url_for('pwa.ca_download', format='pem') }}">als .pem</a>
+  </div>
+  <p class="leise">Fingerabdruck (SHA-256) zum Vergleichen:<br><span class="mono klein" style="word-break:break-all">{{ info.fingerprint }}</span></p>
+
+  <h3>Android (Chrome)</h3>
+  <ol>
+    <li>Zertifikat oben herunterladen.</li>
+    <li>Einstellungen › <b>Sicherheit und Datenschutz</b> › Weitere Sicherheitseinstellungen › <b>Verschlüsselung und Anmeldedaten</b> › <b>Zertifikat installieren</b> › <b>CA-Zertifikat</b> (bei Samsung: Biometrische Daten und Sicherheit › Andere Sicherheitseinstellungen › Vom Gerätespeicher installieren). Die Bezeichnungen unterscheiden sich je nach Hersteller etwas; die Suche in den Einstellungen nach „Zertifikat“ hilft.</li>
+    <li>Warnhinweis mit „Trotzdem installieren“ bestätigen, Datei <span class="mono">finanz-tracker-ca.crt</span> aus „Downloads“ wählen.</li>
+    <li>Chrome komplett schließen und die Seite über <b>https://</b> mit der IP-Adresse des Home Assistant öffnen (Android löst <span class="mono">.local</span>-Namen nicht immer auf), z. B. <span class="mono">https://{{ lan_ip or '192.168.x.y' }}:8099</span>.</li>
+  </ol>
+  <h3>Windows</h3>
+  <ol><li>Datei doppelklicken › „Zertifikat installieren“ › „Aktueller Benutzer“ › „Alle Zertifikate in folgendem Speicher speichern“ › <b>Vertrauenswürdige Stammzertifizierungsstellen</b> › Fertig stellen.</li>
+    <li>Chrome und Edge neu starten. Firefox hat einen eigenen Speicher: Einstellungen › Datenschutz &amp; Sicherheit › Zertifikate anzeigen › Zertifizierungsstellen › Importieren.</li></ol>
+  <h3>iPhone / iPad</h3>
+  <ol><li>Datei in Safari herunterladen › Einstellungen › „Profil geladen“ › Installieren.</li>
+    <li>Einstellungen › Allgemein › Info › <b>Zertifikatsvertrauenseinstellungen</b> › „Finanz-Tracker Heim-CA“ einschalten.</li></ol>
+  <h3>Mac</h3>
+  <ol><li>Datei doppelklicken (Schlüsselbundverwaltung) › Zertifikat öffnen › Vertrauen › „Immer vertrauen“.</li></ol>
+
+  <details class="klappe" style="border:none;padding:0;margin-top:8px"><summary class="leise">Für welche Adressen gilt das Serverzertifikat?</summary>
+    <p class="mono klein">{{ info.server_namen|join(', ') }}</p>
+    <p class="leise">Gültig bis {{ info.server_bis|string|datum }}, wird automatisch erneuert. Fehlt eine Adresse (z. B. ein Tailscale-Name), in den Add-on-Optionen unter <span class="mono">zusatz_hostnamen</span> eintragen und das Add-on neu starten.</p></details>
+</section>
+{% elif opt.zertifikat == 'homeassistant' %}
+<section class="karte"><h2>1. Zertifikat</h2><p>Das Tool nutzt das Zertifikat aus dem Home-Assistant-Ordner <span class="mono">/ssl</span> (z. B. Let's Encrypt über DuckDNS). Es muss für die Adresse gelten, über die du die App aufrufst – dann ist keine Installation auf den Geräten nötig.</p></section>
+{% endif %}
+
+<section class="karte">
+  <h2>2. Als App installieren</h2>
+  <p><b>Android (Chrome):</b> Seite über https:// öffnen › Menü ⋮ › <b>„App installieren“</b> (oder „Zum Startbildschirm hinzufügen“ › „Installieren“). Die App startet danach ohne Adressleiste, mit eigenem Symbol und Kurzbefehlen (lange auf das Symbol drücken: „Bar erfassen“, „Prüfen“).</p>
+  <p><b>Windows/Mac (Chrome, Edge):</b> Installieren-Symbol rechts in der Adressleiste.</p>
+  <p><b>iPhone (Safari):</b> Teilen › „Zum Home-Bildschirm“.</p>
+  <p class="leise" style="margin-bottom:0">Finanzdaten werden nicht auf dem Gerät zwischengespeichert; ohne Verbindung zum Home Assistant zeigt die App einen Hinweis.</p>
+</section>
+{% endblock %}
+{% block skript %}
+<script>
+(() => {
+  const setze = (id, ok, text) => {
+    const li = document.getElementById(id);
+    li.querySelector(".i").className = "i " + (ok ? "ok" : "bad");
+    li.querySelector(".i").textContent = ok ? "✓" : "!";
+    li.querySelector("span:last-child").textContent = text;
+  };
+  setze("pruef-vertrauen", window.isSecureContext,
+    window.isSecureContext ? "Der Browser vertraut der Verbindung (sicherer Kontext)."
+      : "Kein sicherer Kontext: Zertifikat installieren und die Seite über https:// öffnen.");
+  const knopf = document.getElementById("app-installieren");
+  let ereignis = null;
+  if (window.matchMedia("(display-mode: standalone)").matches) {
+    setze("pruef-app", true, "Läuft bereits als installierte App.");
+  } else if (!window.isSecureContext || !("serviceWorker" in navigator)) {
+    setze("pruef-app", false, "Installation erst möglich, wenn die Verbindung vertrauenswürdig ist.");
+  } else {
+    setze("pruef-app", true, "Installierbar – über den Knopf unten oder das Browser-Menü.");
+  }
+  window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); ereignis = e; knopf.hidden = false; });
+  knopf.addEventListener("click", async () => { if (!ereignis) return; ereignis.prompt(); await ereignis.userChoice; ereignis = null; knopf.hidden = true; });
+})();
+</script>
+{% endblock %}

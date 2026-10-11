@@ -1,0 +1,90 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, klappe with context %}
+{% block titel %}Darlehen{% endblock %}
+{% block inhalt %}
+<div class="kopf"><h1>Darlehen</h1><span class="leise">eigener Bereich – fließt nicht in Haupt-Dashboard und Summen ein</span>
+  {% if user.rolle == 'admin' %}<div class="rechts"><a class="btn" href="{{ url_for('konten.neu', typ='darlehen') }}">Darlehenskonto anlegen</a></div>{% endif %}</div>
+
+{% if ohne %}<div class="flash warn">Ohne Konditionen: {% for k in ohne %}<a href="{{ url_for('darlehen.konditionen', kid=k.id) }}">{{ k.name }}</a>{{ ', ' if not loop.last }}{% endfor %} – Konditionen eintragen, damit Plan und Simulation funktionieren.</div>{% endif %}
+
+{% if karten %}
+<div class="kpis">
+  <div class="kpi"><div class="label">Restschuld gesamt</div><div class="wert">{{ gesamt.rest|euro_rund }}</div>
+    <div class="unter">von {{ gesamt.ursprung|euro_rund }} · {{ ((1 - gesamt.rest / gesamt.ursprung) * 100)|round|int if gesamt.ursprung else 0 }} % getilgt</div></div>
+  <div class="kpi"><div class="label">Monatsrate gesamt</div><div class="wert">{{ gesamt.rate|euro_rund }}</div><div class="unter">laut Konditionen</div></div>
+  <div class="kpi"><div class="label">Tilgung {{ heute_jahr }}</div><div class="wert pos">{{ gesamt.tilgung_jahr|euro_rund }}</div><div class="unter">inkl. Sondertilgungen, Plan</div></div>
+  <div class="kpi"><div class="label">Zinsen {{ heute_jahr }}</div><div class="wert">{{ gesamt.zins_jahr|euro_rund }}</div><div class="unter">Plan für das ganze Jahr</div></div>
+</div>
+{% endif %}
+
+<div class="raster">
+{% for k in karten %}
+  <a class="karte ziel" href="{{ url_for('darlehen.detail', kid=k.d.konto_id) }}" style="color:inherit;text-decoration:none;{{ 'opacity:.55' if not k.d.aktiv }}">
+    <div class="kopf"><b>{{ k.d.name }}</b><span class="rechts tag">{{ ('%.2f'|format(k.d.sollzins)).replace('.', ',') }} %</span></div>
+    <div class="leise">{{ k.d.institut or '' }}{% if k.d.immobilie_name %} · {{ k.d.immobilie_name }}{% endif %}</div>
+    <div class="mono" style="font-size:22px;font-weight:600">{{ k.restschuld|euro_rund }}</div>
+    <div class="fortschritt"><span style="width: {{ (k.getilgt_anteil * 100)|round(1) }}%"></span></div>
+    <div class="leise">{{ (k.getilgt_anteil * 100)|round|int }} % getilgt · Rate {{ k.d.rate_cent|euro_rund }}{% if k.ende %} · schuldenfrei {{ k.ende|monat }}{% endif %}</div>
+    {% if k.d.zinsbindung_bis %}<div class="leise">Zinsbindung bis {{ k.d.zinsbindung_bis|monat }}: Rest {{ k.rest_zinsbindung|euro_rund }}</div>{% endif %}
+    {% if k.zinsbindung_warnung %}<span class="tag warn">Zinsbindung endet in {{ k.monate_bis_zinsbindung }} Monaten</span>{% endif %}
+    {% if k.rahmen.frei %}<span class="tag info">Sondertilgung {{ heute_jahr }} frei: {{ k.rahmen.frei|euro_rund }}</span>{% endif %}
+    {% if k.fehler %}<span class="tag bad">{{ k.fehler }}</span>{% endif %}
+  </a>
+{% else %}
+  <div class="karte leer" style="grid-column:1/-1">Noch keine Darlehen mit Konditionen. Lege unter Konten ein Konto vom Typ „Darlehen“ an und trage dann hier die Konditionen ein.</div>
+{% endfor %}
+</div>
+
+{% if verlauf %}
+<section class="karte">
+  <div class="kopf"><h2 style="margin:0">Restschuld laut Plan (Jahresende)</h2><span class="rechts leise">alle Darlehen</span></div>
+  <div class="scroll" style="margin-top:12px"><div style="min-width:{{ [verlauf|length * 18, 320]|max }}px">
+    <div class="balkenreihe">{% for v in verlauf %}<span title="{{ v.jahr }}: {{ v.rest|euro_rund }}" style="height: {{ (v.rest / max_verlauf * 100)|round(1) }}%;{{ 'background:#0A4D42' if v.jahr == heute_jahr }}"></span>{% endfor %}</div>
+    <div class="verlauf-lbl" style="min-width:0;gap:2px">{% for v in verlauf %}<span>{{ v.jahr if loop.first or loop.last or v.jahr % 5 == 0 or v.jahr == heute_jahr else '' }}</span>{% endfor %}</div>
+  </div></div>
+</section>
+{% endif %}
+
+{% if karten|length > 1 %}
+<section class="karte">
+  <h2>Wohin mit einer Sondertilgung?</h2>
+  <form method="get" class="formreihe">
+    <label class="feld" style="flex:0 1 220px">Betrag<input type="text" name="vergleich_betrag" inputmode="decimal" value="{{ vergleich_betrag }}" placeholder="z. B. 10.000"></label>
+    <button class="btn primaer" type="submit">Vergleichen</button>
+  </form>
+  {% if vergleich %}
+  <div class="scroll" style="margin-top:12px"><table class="tab vergleich">
+    <thead><tr><th style="padding-left:0">Darlehen</th><th style="text-align:right">Zins</th><th style="text-align:right">Ersparnis bis Zinsbindung</th><th style="text-align:right">Ersparnis gesamt</th><th style="text-align:right">Laufzeit kürzer</th><th>Rahmen {{ heute_jahr }}</th></tr></thead>
+    <tbody>{% for v in vergleich %}<tr>
+      <td class="{{ 'best' if loop.first }}" style="padding-left:0"><b>{{ v.d.name }}</b>{% if loop.first %} <span class="tag ok">beste Wahl</span>{% endif %}</td>
+      <td class="betrag {{ 'best' if loop.first }}">{{ ('%.2f'|format(v.d.sollzins)).replace('.', ',') }} %</td>
+      <td class="betrag {{ 'best' if loop.first }}">{{ v.s.ersparnis_zb|euro_rund if v.s.ersparnis_zb is not none else '–' }}</td>
+      <td class="betrag {{ 'best' if loop.first }}">{{ v.s.ersparnis|euro_rund }}</td>
+      <td class="betrag {{ 'best' if loop.first }}">{{ v.s.verkuerzung_monate }} Monate</td>
+      <td class="{{ 'best' if loop.first }}">{% if v.s.ueber_rahmen %}<span class="tag bad">über Rahmen</span>{% elif v.s.rahmen.frei is not none %}frei {{ v.s.rahmen.frei|euro_rund }}{% else %}<span class="leise">nicht hinterlegt</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  <p class="leise" style="margin-bottom:0">Maßgeblich ist meist die Ersparnis bis zum Ende der Zinsbindung, weil der Zins danach neu verhandelt wird. Die Sondertilgung „verzinst“ sich risikofrei mit dem Sollzins des Darlehens.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="karte">
+  <h2>Immobilien</h2>
+  {% for e in immobilien %}
+  <div class="kopf" style="padding:6px 0;border-bottom:1px solid var(--line2)"><b>{{ e.i.name }}</b>
+    <span class="leise">Wert {{ e.wert|euro_rund if e.wert else '–' }}{% if e.i.wert_datum %} (Stand {{ e.i.wert_datum|datum }}){% endif %} · Restschuld {{ e.rest|euro_rund }}</span>
+    <span class="rechts">{% if e.eigen is not none %}<span class="tag ok">Eigenanteil {{ e.eigen|euro_rund }}</span> <span class="tag">Beleihung {{ (e.beleihung * 100)|round|int }} %</span>{% endif %}</span></div>
+  {% else %}<p class="leise">Optional: Immobilie mit Kaufpreis bzw. geschätztem Wert hinterlegen, um Eigenanteil und Beleihungsquote zu sehen.</p>{% endfor %}
+  {% if darf_schreiben %}
+  {% call klappe('immobilie-neu', 'Immobilie anlegen oder ändern') %}
+  <form method="post" action="{{ url_for('darlehen.immobilie') }}" class="formreihe">{{ csrf() }}
+    <label class="feld">Bestehende ändern<select name="id"><option value="">– neu anlegen –</option>{% for e in immobilien %}<option value="{{ e.i.id }}">{{ e.i.name }}</option>{% endfor %}</select></label>
+    <label class="feld" style="flex:2 1 200px">Name<input type="text" name="name" placeholder="z. B. Haus Lindenweg" required></label>
+    <label class="feld">Kaufpreis<input type="text" name="kaufpreis" inputmode="decimal"></label>
+    <label class="feld">Kaufdatum<input type="date" name="kaufdatum" style="min-height:40px"></label>
+    <label class="feld">Geschätzter Wert<input type="text" name="wert" inputmode="decimal"></label>
+    <label class="feld">Stand der Schätzung<input type="date" name="wert_datum" style="min-height:40px"></label>
+    <button class="btn primaer" type="submit">Speichern</button>
+  </form>
+  {% endcall %}
+  {% endif %}
+</section>
+{% endblock %}

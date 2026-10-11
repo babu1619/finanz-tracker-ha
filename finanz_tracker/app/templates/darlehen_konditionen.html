@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Konditionen {{ k.name }}{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('darlehen.detail', kid=k.id) if d else url_for('darlehen.index') }}">‹ zurück</a></div>
+<form method="post" class="karte" style="display:flex;flex-direction:column;gap:12px;max-width:760px">{{ csrf() }}
+  <h1>Konditionen {{ k.name }}</h1>
+  <p class="leise" style="margin:0">Aus diesen Angaben berechnet das Tool den Tilgungsplan. Alles steht im Darlehensvertrag.</p>
+  <div class="formreihe">
+    <label class="feld">Darlehensbetrag<input type="text" name="ursprung" inputmode="decimal" required value="{{ ('%.2f'|format(d.ursprung_cent / 100)).replace('.', ',') if d }}" placeholder="z. B. 250.000"></label>
+    <label class="feld">Sollzins p. a. in %<input type="text" name="sollzins" inputmode="decimal" required value="{{ ('%g'|format(d.sollzins)).replace('.', ',') if d }}" placeholder="z. B. 1,45"></label>
+    <label class="feld">Monatsrate<input type="text" name="rate" inputmode="decimal" required value="{{ ('%.2f'|format(d.rate_cent / 100)).replace('.', ',') if d }}" placeholder="z. B. 925"></label>
+  </div>
+  <div class="formreihe">
+    <label class="feld">Erste Rate<input type="month" name="erste_rate" required value="{{ d.erste_rate if d }}" style="min-height:40px"></label>
+    <label class="feld">Zinsbindung bis<input type="month" name="zinsbindung_bis" value="{{ d.zinsbindung_bis or '' if d }}" style="min-height:40px"></label>
+    <label class="feld">Erinnern vor Ende<select name="erinnerung_monate">{% for m in [12, 24, 36, 60] %}<option value="{{ m }}" {{ 'selected' if (d.erinnerung_monate if d else 24) == m }}>{{ m }} Monate</option>{% endfor %}</select></label>
+  </div>
+  <div class="formreihe">
+    <label class="feld">Sondertilgung pro Jahr in % der Darlehenssumme<input type="text" name="sondertilgung_prozent" inputmode="decimal" value="{{ ('%g'|format(d.sondertilgung_prozent)).replace('.', ',') if d and d.sondertilgung_prozent }}" placeholder="z. B. 5"></label>
+    <label class="feld">Immobilie<select name="immobilie_id"><option value="">–</option>{% for i in immobilien %}<option value="{{ i.id }}" {{ 'selected' if d and d.immobilie_id == i.id }}>{{ i.name }}</option>{% endfor %}</select></label>
+    <label class="feld">Rate wird bezahlt von<select name="zahlkonto_id"><option value="">–</option>{% for z in zahlkonten %}<option value="{{ z.id }}" {{ 'selected' if d and d.zahlkonto_id == z.id }}>{{ z.name }}</option>{% endfor %}</select></label>
+  </div>
+  <p class="leise" style="margin:0">Die Rate vom Girokonto ist eine Ausgabe (Kategorie z. B. „Wohnen › Darlehensrate“), keine Umbuchung. Das Darlehenskonto selbst zählt nie in Summen und Haupt-Dashboard.</p>
+  <div class="formreihe"><button class="btn primaer" type="submit">Speichern</button></div>
+</form>
+{% endblock %}

@@ -119,6 +119,84 @@ document.addEventListener("DOMContentLoaded", () => {
   // Monatsverlauf auf dem Handy: neueste Monate sichtbar
   document.querySelectorAll(".scroll").forEach((s) => { if (s.querySelector(".verlauf")) s.scrollLeft = s.scrollWidth; });
 
+  // Einklappbare Bereiche: Zustand je Bereich im Browser merken
+  document.querySelectorAll("details[data-merken]").forEach((d) => {
+    const key = "klappe:" + location.pathname + ":" + d.dataset.merken;
+    try {
+      const gemerkt = localStorage.getItem(key);
+      if (gemerkt !== null && !d.hasAttribute("data-erzwingen")) d.open = gemerkt === "1";
+    } catch (e) { /* ohne Speicher: Standard */ }
+    d.addEventListener("toggle", () => { try { localStorage.setItem(key, d.open ? "1" : "0"); } catch (e) { /* egal */ } });
+  });
+  // Häkchen in der Tabelle: Änderungsbereich automatisch öffnen
+  const aenderung = document.getElementById("aenderung");
+  if (aenderung) {
+    document.querySelectorAll("input[name=ids], #alle").forEach((c) => c.addEventListener("change", () => {
+      if (document.querySelectorAll("input[name=ids]:checked").length) aenderung.open = true;
+    }));
+  }
+
+  // Aufteilung einer Buchung
+  const splitEditor = document.getElementById("split-editor");
+  if (splitEditor) {
+    const box = document.getElementById("aufteilen");
+    const einzel = document.getElementById("einzelkategorie");
+    const zeilen = document.getElementById("split-zeilen");
+    const status = document.getElementById("split-status");
+    const ziel = Math.abs(parseInt(document.getElementById("buchungsbetrag").dataset.cent, 10));
+    const cent = (t) => {
+      const s = (t || "").replace(/\s|€/g, "").replace(/\./g, "").replace(",", ".");
+      const v = Math.round(parseFloat(s) * 100);
+      return isNaN(v) ? 0 : Math.abs(v);
+    };
+    const fmt = (c) => (c / 100).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+    const summe = () => Array.from(zeilen.querySelectorAll("input[name=split_betrag]")).reduce((a, i) => a + cent(i.value), 0);
+    function pruefe() {
+      const diff = ziel - summe();
+      status.textContent = diff === 0 ? "Summe stimmt" : (diff > 0 ? "noch " + fmt(diff) + " offen" : fmt(-diff) + " zu viel");
+      status.style.color = diff === 0 ? "var(--accent-dark)" : "var(--bad)";
+      zeilen.querySelectorAll(".split-weg").forEach((b) => { b.disabled = zeilen.children.length <= 2; });
+    }
+    function umschalten() {
+      splitEditor.hidden = !box.checked;
+      einzel.hidden = box.checked;
+      zeilen.querySelectorAll("input,select").forEach((el) => { el.disabled = !box.checked; });
+      pruefe();
+    }
+    box.addEventListener("change", umschalten);
+    zeilen.addEventListener("input", pruefe);
+    zeilen.addEventListener("click", (e) => {
+      if (e.target.classList.contains("split-weg") && zeilen.children.length > 2) { e.target.closest(".split-zeile").remove(); pruefe(); }
+    });
+    document.getElementById("split-neu").addEventListener("click", () => {
+      const neu = zeilen.lastElementChild.cloneNode(true);
+      neu.querySelectorAll("input").forEach((i) => { i.value = ""; });
+      neu.querySelectorAll("select").forEach((s) => { s.selectedIndex = 0; });
+      zeilen.appendChild(neu);
+      const rest = ziel - summe();
+      if (rest > 0) neu.querySelector("input[name=split_betrag]").value = (rest / 100).toFixed(2).replace(".", ",");
+      pruefe();
+    });
+    document.getElementById("split-rest").addEventListener("click", () => {
+      const felder = zeilen.querySelectorAll("input[name=split_betrag]");
+      const letztes = felder[felder.length - 1];
+      const ohne = summe() - cent(letztes.value);
+      letztes.value = (Math.max(0, ziel - ohne) / 100).toFixed(2).replace(".", ",");
+      pruefe();
+    });
+    document.getElementById("buchung-form").addEventListener("submit", (e) => {
+      if (box.checked && summe() !== ziel) { e.preventDefault(); pruefe(); status.scrollIntoView({ block: "center" }); }
+    });
+    umschalten();
+  }
+
+  // Schnellerfassung: Vorzeichen-Umschalter
+  document.querySelectorAll("[data-richtung]").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll("[data-richtung]").forEach((x) => x.classList.toggle("an", x === b));
+    const feld = document.getElementById("richtung");
+    if (feld) feld.value = b.dataset.richtung;
+  }));
+
   // Tastatur im Prüf-Modus: Enter = speichern (Standard), "s" = überspringen
   const skip = document.getElementById("ueberspringen");
   if (skip) {
@@ -128,3 +206,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+// Installierbare App: Service Worker nur in sicherem Kontext (HTTPS mit vertrautem Zertifikat)
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {}); });
+}

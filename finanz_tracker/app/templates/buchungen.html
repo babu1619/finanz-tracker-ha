@@ -1,16 +1,17 @@
-{% extends "base.html" %}{% from "_makros.html" import csrf, kat_select, person_select, quelle with context %}
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_select, person_select, quelle, tagliste, klappe with context %}
 {% block titel %}Buchungen{% endblock %}
 {% block inhalt %}
 <div class="kopf">
   <h1>Buchungen</h1>
-  <span class="leise">{% if f.monat and f.monat != 'alle' %}Abrechnungsmonat {{ f.monat|monat }}{% else %}alle Monate{% endif %}</span>
+  <span class="leise">{% if f.monat and f.monat != 'alle' %}Abrechnungsmonat {{ f.monat|monat }}{% else %}alle Monate{% endif %}{% if tag_name %} · #{{ tag_name }}{% endif %}</span>
   <div class="rechts">
-    {% if darf_schreiben %}<a class="btn" href="{{ url_for('pruefen.index') }}">Prüf-Modus</a>{% endif %}
+    {% if darf_schreiben %}<a class="btn" href="{{ url_for('erfassen.index') }}">Bar erfassen</a><a class="btn" href="{{ url_for('pruefen.index') }}">Prüf-Modus</a>{% endif %}
     <a class="btn" href="{{ url_for('buchungen.export', **request.args) }}">CSV exportieren</a>
   </div>
 </div>
 
-<form method="get" class="karte formreihe">
+{% call klappe('suche', 'Suche und Filter', offen=(filter_n > 0), zusatz=(filter_n ~ ' aktiv' if filter_n else 'Monat, Konto, Kategorie, Person, Tag')) %}
+<form method="get" class="formreihe">
   <label class="feld" style="flex:2 1 220px">Suche<input type="search" name="suche" value="{{ f.suche }}" placeholder="Gegenpartei, Zweck, Notiz, Betrag"></label>
   <label class="feld">Monat
     <select name="monat"><option value="alle">alle</option>
@@ -20,59 +21,78 @@
   <label class="feld">Konto<select name="konto"><option value="">alle</option>{% for k in konten %}<option value="{{ k.id }}" {{ 'selected' if f.konto == k.id }}>{{ k.name }}</option>{% endfor %}</select></label>
   <label class="feld">Kategorie (inkl. Unterkategorien)
     <select name="kategorie"><option value="">alle</option><option value="ohne" {{ 'selected' if f.kategorie == 'ohne' }}>ohne Kategorie</option>
-      {% for k in kategorien %}<option value="{{ k.id }}" {{ 'selected' if f.kategorie == k.id|string }}>{{ '   ' * k.ebene }}{{ k.name }}</option>{% endfor %}</select></label>
+      {% for k in kategorien %}<option value="{{ k.id }}" {{ 'selected' if f.kategorie == k.id|string }}>{{ '   ' * k.ebene }}{{ k.name }}</option>{% endfor %}</select></label>
   <label class="feld">Person{{ person_select('person', personen, f.person, 'alle') }}</label>
+  <label class="feld">Tag<select name="tag"><option value="">alle</option>{% for t in alle_tags %}<option value="{{ t.id }}" {{ 'selected' if f.tag == t.id }}>{{ t.name }}</option>{% endfor %}</select></label>
   <label class="feld">Status
     <select name="status"><option value="">alle</option>
-      <option value="ungeprueft" {{ 'selected' if f.status == 'ungeprueft' }}>automatisch, ungeprüft</option>
-      <option value="umbuchung" {{ 'selected' if f.status == 'umbuchung' }}>Umbuchungen</option>
-      <option value="manuell" {{ 'selected' if f.status == 'manuell' }}>manuell zugeordnet</option></select></label>
+      {% for v, t in [('ungeprueft','automatisch, ungeprüft'),('umbuchung','Umbuchungen'),('manuell','manuell zugeordnet'),('aufgeteilt','aufgeteilt'),('verteilt','auf Monate verteilt'),('bar','bar erfasst')] %}
+      <option value="{{ v }}" {{ 'selected' if f.status == v }}>{{ t }}</option>{% endfor %}</select></label>
   <button class="btn primaer" type="submit">Filtern</button>
+  {% if filter_n %}<a class="btn" href="{{ url_for('buchungen.liste', monat=f.monat or 'alle') }}">Filter zurücksetzen</a>{% endif %}
 </form>
+{% endcall %}
 
 <form method="post" action="{{ url_for('buchungen.sammel') }}">
   {{ csrf() }}<input type="hidden" name="zurueck" value="{{ request.full_path }}">
   {% if darf_schreiben %}
-  <div class="karte formreihe" style="padding:10px 14px">
+  {% call klappe('aenderung', 'Mehrere Buchungen ändern', zusatz='Auswahl per Häkchen in der Tabelle') %}
+  <div class="formreihe">
     <span id="auswahl-zahl" class="leise" style="min-width:110px">keine ausgewählt</span>
-    <label class="feld" style="flex:0 1 220px">Sammelaktion
+    <label class="feld" style="flex:0 1 240px">Sammelaktion
       <select name="aktion" id="sammel-aktion">
         <option value="kategorie">Kategorie setzen</option><option value="person">Person setzen</option>
-        <option value="monat">Abrechnungsmonat setzen</option><option value="bestaetigen">Als geprüft bestätigen</option>
+        <option value="monat">Abrechnungsmonat setzen</option><option value="verteilung">Auf Monate verteilen</option>
+        <option value="tag">Tag hinzufügen</option><option value="tag_weg">Tag entfernen</option>
+        <option value="bestaetigen">Als geprüft bestätigen</option>
         <option value="umbuchung">Als Umbuchung verknüpfen (2 Buchungen)</option></select></label>
     <label class="feld" data-fuer="kategorie" style="flex:1 1 240px">Kategorie{{ kat_select('kategorie_id', kategorien) }}</label>
     <label class="feld" data-fuer="person">Person{{ person_select('person_id', personen) }}</label>
     <label class="feld" data-fuer="monat">Monat<input type="month" name="abrechnungsmonat" value="{{ f.monat if f.monat and f.monat != 'alle' }}" style="min-height:40px"></label>
+    <label class="feld" data-fuer="verteilung">Monate<select name="verteilung_monate">{% for v in [1,2,3,4,6,12,24] %}<option value="{{ v }}" {{ 'selected' if v == 12 }}>{{ v }}{{ ' (nicht verteilen)' if v == 1 }}</option>{% endfor %}</select></label>
+    <label class="feld" data-fuer="tag">Tag<input type="text" name="tag_name" list="tagliste" placeholder="neu oder vorhanden"></label>
+    <label class="feld" data-fuer="tag_weg">Tag<select name="tag_id">{% for t in alle_tags %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></label>
+    <datalist id="tagliste">{% for t in alle_tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
     <button class="btn" type="submit">Ausführen</button>
   </div>
+  {% endcall %}
   {% endif %}
 
-  <div class="karte ohne-rand" style="margin-top:16px">
-    <div class="scroll"><table class="tab" style="min-width:860px">
+  <div class="karte ohne-rand">
+    <div class="scroll"><table class="tab buchungstab">
       <thead><tr>
-        {% if darf_schreiben %}<th style="width:30px"><input type="checkbox" id="alle" aria-label="Alle auswählen"></th>{% endif %}
-        <th>Datum</th><th>Abr.-Monat</th><th>Konto</th><th>Gegenpartei · Verwendungszweck</th><th>Kategorie</th><th>Person</th><th style="text-align:right">Betrag</th>
+        {% if darf_schreiben %}<th class="sp-check" style="width:30px"><input type="checkbox" id="alle" aria-label="Alle auswählen"></th>{% endif %}
+        <th class="sp-datum">Datum</th><th class="sp-neben">Abr.-Monat</th><th class="sp-neben">Konto</th><th>Gegenpartei · Verwendungszweck</th><th class="sp-neben">Kategorie</th><th class="sp-neben">Person</th><th style="text-align:right">Betrag</th>
       </tr></thead>
       <tbody>
       {% for b in rows %}
+        {% set teile = splits_je.get(b.id) %}
         <tr>
           {% if darf_schreiben %}<td><input type="checkbox" name="ids" value="{{ b.id }}" aria-label="Buchung auswählen"></td>{% endif %}
-          <td class="mono" style="white-space:nowrap;font-size:13px">{{ b.buchungsdatum|datum }}</td>
-          <td style="white-space:nowrap">{% if b.abrechnungsmonat != b.buchungsdatum[:7] %}<span class="tag info">{{ b.abrechnungsmonat|monat_kurz }}</span>{% else %}<span class="leise">{{ b.abrechnungsmonat|monat_kurz }}</span>{% endif %}</td>
-          <td class="leise" style="white-space:nowrap">{{ b.konto_name }}</td>
+          <td class="mono" style="white-space:nowrap;font-size:13px"><span class="nur-desk">{{ b.buchungsdatum|datum }}</span><span class="nur-handy">{{ b.buchungsdatum[8:10] }}.{{ b.buchungsdatum[5:7] }}.</span>{% if b.abrechnungsmonat != b.buchungsdatum[:7] %}<div class="nur-handy"><span class="tag info">{{ b.abrechnungsmonat|monat_kurz }}</span></div>{% endif %}</td>
+          <td class="sp-neben" style="white-space:nowrap">{% if b.abrechnungsmonat != b.buchungsdatum[:7] %}<span class="tag info">{{ b.abrechnungsmonat|monat_kurz }}</span>{% else %}<span class="leise">{{ b.abrechnungsmonat|monat_kurz }}</span>{% endif %}
+            {% if b.verteilung_monate > 1 %}<div><span class="tag" title="auf {{ b.verteilung_monate }} Monate verteilt">÷ {{ b.verteilung_monate }}</span></div>{% endif %}</td>
+          <td class="leise sp-neben" style="white-space:nowrap">{{ b.konto_name }}</td>
           <td><a href="{{ url_for('buchungen.bearbeiten', bid=b.id, zurueck=request.full_path) }}" style="color:inherit;text-decoration:none"><b>{{ b.gegenpartei or '–' }}</b></a>
-            <div class="leise">{{ b.verwendungszweck|truncate(110) }}</div>{% if b.notiz %}<div class="klein">Notiz: {{ b.notiz }}</div>{% endif %}</td>
-          <td style="font-size:13px">{% if b.ist_umbuchung %}<span class="tag">Umbuchung</span>{% elif b.kat_pfad %}{{ b.kat_pfad }}{% else %}<span class="tag warn">ohne Kategorie</span>{% endif %}{{ quelle(b) }}</td>
-          <td class="leise">{{ b.person_name or '' }}</td>
+            <div class="leise">{{ b.verwendungszweck|truncate(110) }}</div>{% if b.notiz %}<div class="klein">Notiz: {{ b.notiz }}</div>{% endif %}
+            {% if tags_je.get(b.id) %}<div style="margin-top:3px">{{ tagliste(tags_je.get(b.id)) }}</div>{% endif %}
+            <div class="nur-handy" style="margin-top:3px"><span class="leise">{{ b.konto_name }} · </span>{% if b.ist_umbuchung %}<span class="tag">Umbuchung</span>{% elif teile %}<span class="tag info">Aufgeteilt · {{ teile|length }} Teile</span>{% elif b.kat_pfad %}<span class="leise">{{ b.kat_pfad }}</span>{% if not b.geprueft %} <span class="tag offen">ungeprüft</span>{% endif %}{% else %}<span class="tag warn">ohne Kategorie</span>{% endif %}</div></td>
+          <td class="sp-neben" style="font-size:13px">{% if b.ist_umbuchung %}<span class="tag">Umbuchung</span>
+            {% elif teile %}<span class="tag info">Aufgeteilt</span>
+              {% for s in teile %}<div class="splitzeile"><span>{{ s.kat_pfad or '–' }}</span><span class="mono">{{ s.betrag_cent|euro }}</span></div>{% endfor %}
+            {% elif b.kat_pfad %}{{ b.kat_pfad }}{% else %}<span class="tag warn">ohne Kategorie</span>{% endif %}
+            {% if not teile %}{{ quelle(b) }}{% endif %}
+            {% if b.ruecklage_name %}<span class="quelle">aus Rücklage „{{ b.ruecklage_name }}“</span>{% endif %}</td>
+          <td class="leise sp-neben">{{ b.person_name or '' }}</td>
           <td class="betrag {{ 'pos' if b.betrag_cent > 0 }}" style="{{ 'color:#56625D' if b.ist_umbuchung }}">{{ b.betrag_cent|euro_vz }}</td>
         </tr>
       {% else %}
         <tr><td colspan="8" class="leer">Keine Buchungen für diese Auswahl.</td></tr>
       {% endfor %}
       </tbody>
-      <tfoot><tr><td colspan="{{ 5 if darf_schreiben else 4 }}"><b>{{ summe.n }} Buchungen</b>{% if summe.n > rows|length %} (die ersten {{ rows|length }} angezeigt){% endif %} · Umbuchungen nicht mitgezählt</td>
-        <td colspan="3" class="betrag">Ausgaben {{ summe.aus|euro }} · <span class="pos">Einnahmen {{ summe.ein|euro_vz }}</span></td></tr></tfoot>
     </table></div>
+    <div class="tabfuss"><span><b>{{ summe.n }} Buchungen</b>{% if summe.n > rows|length %} (die ersten {{ rows|length }} angezeigt){% endif %} · Umbuchungen nicht mitgezählt</span>
+      <span class="betrag">Ausgaben {{ summe.aus|euro }} · <span class="pos">Einnahmen {{ summe.ein|euro_vz }}</span></span></div>
   </div>
 </form>
 {% endblock %}

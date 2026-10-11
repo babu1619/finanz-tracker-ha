@@ -11,7 +11,7 @@
     <a href="?monat={{ monat }}" class="{{ 'an' if not person_id }}">Alle</a>
     {% for p in personen %}<a href="?monat={{ monat }}&person={{ p.id }}" class="{{ 'an' if person_id == p.id }}">{{ p.name }}</a>{% endfor %}
   </div>
-  {% if darf_schreiben %}<div class="rechts"><a class="btn primaer" href="{{ url_for('importe.index') }}">Datei importieren</a></div>{% endif %}
+  {% if darf_schreiben %}<div class="rechts"><a class="btn" href="{{ url_for('erfassen.index') }}">Bar erfassen</a><a class="btn primaer" href="{{ url_for('importe.index') }}">Datei importieren</a></div>{% endif %}
 </div>
 
 <div class="kpis">
@@ -49,10 +49,46 @@
       <a href="{{ url_for('pruefen.index') }}"><span class="zahlkreis warn">{{ ohne_kat }}</span><span style="flex:1">Buchungen ohne Kategorie</span><span aria-hidden="true">›</span></a>
       <a href="{{ url_for('buchungen.liste', status='ungeprueft', monat='alle') }}"><span class="zahlkreis warn">{{ ungeprueft }}</span><span style="flex:1">Automatisch zugeordnet, ungeprüft</span><span aria-hidden="true">›</span></a>
       <a href="{{ url_for('pruefen.index') }}#umbuchungen"><span class="zahlkreis info">{{ umbuchungs_vorschlaege }}</span><span style="flex:1">Umbuchungsvorschläge bestätigen</span><span aria-hidden="true">›</span></a>
+      {% for v in vt_hinweise %}
+      <a href="{{ url_for('vertraege.index') }}"><span class="zahlkreis {{ 'warn' if v.ausgeblieben or (v.aenderung or 0) > 0 else 'info' }}">€</span><span style="flex:1">{{ v.name }}: {% if v.ausgeblieben %}Zahlung ausgeblieben{% else %}Preis {{ '+' if v.aenderung > 0 }}{{ v.aenderung|euro }}{% endif %}</span><span aria-hidden="true">›</span></a>
+      {% endfor %}
+      {% for h in darlehen_hinweise %}
+      <a href="{{ url_for('darlehen.detail', kid=h.kid) }}"><span class="zahlkreis warn">%</span><span style="flex:1">{{ h.text }}</span><span aria-hidden="true">›</span></a>
+      {% endfor %}
       {% for r in saldo_warnungen %}
       <a href="{{ url_for('importe.lauf', lid=r.letzter.id) }}"><span class="zahlkreis bad">!</span><span style="flex:1">Saldo {{ r.k.name }} weicht um {{ r.letzter.saldo_differenz_cent|euro }} ab</span><span aria-hidden="true">›</span></a>
       {% endfor %}
     </div>
+  </section>
+</div>
+
+<div class="reihe">
+  <section class="karte breit">
+    <div class="kopf"><h2 style="margin:0">Budgets</h2>
+      <span class="rechts leise">{% if bue.summe.soll %}{{ bue.summe.ist|euro_rund }} von {{ bue.summe.soll|euro_rund }}{% if bue.laufend %} · Prognose {{ bue.summe.prognose|euro_rund }}{% endif %}{% endif %}</span></div>
+    {% for z in budget_top %}
+    <a class="budgetzeile" href="{{ url_for('budgets.index', monat=monat) }}" style="color:inherit;text-decoration:none">
+      <span class="bname"><b>{{ z.k.name }}</b>{% if z.b.person_name %} <span class="leise">{{ z.b.person_name }}</span>{% endif %}</span>
+      <span class="fortschritt">{% if z.prognose is not none and z.soll > 0 %}<span class="prognose" style="width: {{ [z.prognose / z.soll * 100, 100]|min }}%"></span>{% endif %}<span class="{{ z.status if z.status != 'ok' }}" style="position:relative;width: {{ [z.quote * 100, 100]|min }}%"></span>{% if z.anteil_zeit < 1 %}<i style="left: {{ (z.anteil_zeit * 100)|round(1) }}%"></i>{% endif %}</span>
+      <span class="zahlen">{{ (z.quote * 100)|round|int }} %<div class="leise">{% if z.rest >= 0 %}{{ z.rest|euro_rund }} übrig{% else %}{{ (-z.rest)|euro_rund }} drüber{% endif %}</div></span>
+    </a>
+    {% else %}<p class="leer" style="padding:16px">Noch keine Budgets. <a href="{{ url_for('budgets.index') }}">Budgets anlegen</a></p>{% endfor %}
+  </section>
+
+  <section class="karte schmal">
+    <div class="kopf"><h2 style="margin:0">Sparen</h2><a class="rechts" href="{{ url_for('sparen.index') }}">Details</a></div>
+    <div class="kpis" style="margin-top:10px;gap:10px">
+      <div style="flex:1 1 120px"><div class="leise">Sparquote {{ monat|monat_kurz }}</div><div class="mono" style="font-size:20px;font-weight:600">{% if werte.sparquote is not none %}{{ (werte.sparquote * 100)|round|int }} %{% else %}–{% endif %}</div>
+        <div class="leise">Ziel {{ (spar.ziel_quote * 100)|round|int }} %</div></div>
+      <div style="flex:1 1 120px"><div class="leise">Gespart {{ monat[:4] }}</div><div class="mono" style="font-size:20px;font-weight:600">{{ spar.gespart_jahr|euro_rund }}</div>
+        {% if spar.tilgung_jahr %}<div class="leise">+ Tilgung {{ spar.tilgung_jahr|euro_rund }}</div>{% endif %}</div>
+    </div>
+    {% if werte.sparquote is not none %}<div class="fortschritt" style="margin-top:10px" title="Sparquote im Verhältnis zum Ziel"><span class="{{ 'warn' if werte.sparquote < spar.ziel_quote }}" style="width: {{ [[werte.sparquote / spar.ziel_quote * 100 if spar.ziel_quote else 100, 0]|max, 100]|min }}%"></span></div>{% endif %}
+    {% for e in ziele %}
+    <a href="{{ url_for('sparen.detail', rid=e.r.id) }}" style="display:block;margin-top:14px;color:inherit;text-decoration:none">
+      <div class="kopf"><span>{{ e.r.name }}</span><span class="rechts leise">{{ e.stand|euro_rund }} / {{ e.ziel|euro_rund }}</span></div>
+      <div class="fortschritt" style="margin-top:4px"><span class="{{ 'warn' if e.im_plan is sameas false }}" style="width: {{ (e.fortschritt * 100)|round(1) }}%"></span></div></a>
+    {% else %}<p class="leise" style="margin-bottom:0">Noch keine Sparziele. <a href="{{ url_for('sparen.index') }}">Sparziel anlegen</a></p>{% endfor %}
   </section>
 </div>
 
@@ -80,7 +116,7 @@
     <tbody>
     {% for r in konten %}
       <tr>
-        <td><b>{{ r.k.name }}</b> <span class="leise">{{ {'giro':'Giro','tagesgeld':'Tagesgeld','kreditkarte':'Kreditkarte','bargeld':'Bargeld','depot':'Depot','darlehen':'Darlehen · eigener Bereich','sonstiges':''}[r.k.typ] }}</span></td>
+        <td><b>{{ r.k.name }}</b> <span class="leise">{{ {'giro':'Giro','tagesgeld':'Tagesgeld','kreditkarte':'Kreditkarte','bargeld':'Bargeld','depot':'Depot','darlehen':'Darlehen · eigener Bereich, nicht in Summen','sonstiges':''}[r.k.typ] }}</span></td>
         <td class="betrag">{{ r.saldo|euro }}</td>
         <td class="leise">{% if r.letzter %}{{ r.letzter.zeitpunkt|datum }}{% if r.tage == 0 %} · heute{% elif r.tage == 1 %} · gestern{% elif r.tage is not none %} · vor {{ r.tage }} Tagen{% endif %}{% else %}noch nie{% endif %}</td>
         <td>{% if r.letzter and r.letzter.saldo_differenz_cent %}<span class="tag bad">Saldo weicht ab</span>

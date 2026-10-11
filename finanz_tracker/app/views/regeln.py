@@ -29,6 +29,11 @@ def _beschreibe(regel, kat_pfade, personen, konten):
         akt.append(personen.get(int(a["person_id"]), "?"))
     if a.get("monat_versatz"):
         akt.append(f"Monat {int(a['monat_versatz']):+d}")
+    if a.get("verteilung_monate") and int(a["verteilung_monate"]) > 1:
+        akt.append(f"auf {int(a['verteilung_monate'])} Monate verteilt")
+    if a.get("tag_id"):
+        t = q1("SELECT name FROM tag WHERE id = ?", (int(a["tag_id"]),))
+        akt.append(f"Tag „{t['name'] if t else '?'}“")
     return " und ".join(bed), " · ".join(akt)
 
 
@@ -43,7 +48,8 @@ def liste():
     for r in q("SELECT * FROM regel ORDER BY prioritaet, id"):
         wenn, dann = _beschreibe(r, kat_pfade, personen, konten)
         rows.append({"r": r, "wenn": wenn, "dann": dann, "stat": stat.get(r["id"], {"n": 0, "zuletzt": None})})
-    return render_template("regeln.html", rows=rows)
+    from ..services import modell
+    return render_template("regeln.html", rows=rows, quoten=modell.trefferquoten())
 
 
 def _aus_formular():
@@ -70,6 +76,13 @@ def _aus_formular():
     versatz = int_oder_none(request.form.get("monat_versatz")) or 0
     if versatz:
         akt["monat_versatz"] = versatz
+    verteilung = int_oder_none(request.form.get("verteilung_monate")) or 1
+    if verteilung > 1:
+        akt["verteilung_monate"] = min(60, verteilung)
+    tag_name = request.form.get("tag_name", "").strip()
+    if tag_name:
+        from ..services import tags
+        akt["tag_id"] = tags.finde_oder_lege_an(tag_name)
     return bed, akt
 
 
@@ -78,7 +91,9 @@ def _form(regel=None, bed=None, akt=None, test=None, name=""):
     akt = akt if akt is not None else (jload(regel["aktionen"], {}) if regel else {})
     while len(bed) < 4:
         bed.append({"feld": "", "op": "enthaelt", "wert": ""})
-    return render_template("regel.html", regel=regel, bed=bed, akt=akt, test=test,
+    tag = q1("SELECT name FROM tag WHERE id = ?", (int(akt["tag_id"]),)) if akt.get("tag_id") else None
+    return render_template("regel.html", regel=regel, bed=bed, akt=akt, test=test, tag_name=tag["name"] if tag else "",
+                           alle_tags=q("SELECT name FROM tag ORDER BY name"),
                            name=name or (regel["name"] if regel else ""), kategorien=kategorien.alle(),
                            personen=q("SELECT * FROM person WHERE aktiv = 1 ORDER BY name"),
                            konten=q("SELECT * FROM konto ORDER BY sortierung, name"),

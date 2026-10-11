@@ -1,6 +1,5 @@
-"""Automatische Zuordnung: 1. Regeln (sicher), 2. Gedächtnis (gleiche Gegenpartei wie bestätigte Buchungen).
-
-Manuell zugeordnete Buchungen werden nie überschrieben.
+"""Automatische Zuordnung: 1. Regeln (sicher), 2. Gedächtnis (gleiche Gegenpartei wie bestätigte Buchungen),
+3. Lernmodell (ähnliche Texte). Manuell zugeordnete oder aufgeteilte Buchungen werden nie überschrieben.
 """
 import re
 from collections import Counter
@@ -91,6 +90,10 @@ def zielwerte(regel, b) -> dict:
         werte["person_id"] = int(a["person_id"])
     versatz = int(a.get("monat_versatz") or 0)
     werte["abrechnungsmonat"] = monat_plus(monat_von(b["buchungsdatum"]), versatz)
+    if a.get("tag_id"):
+        werte["tag_id"] = int(a["tag_id"])
+    if a.get("verteilung_monate"):
+        werte["verteilung_monate"] = max(1, min(60, int(a["verteilung_monate"])))
     if a.get("als_umbuchung"):
         werte["ist_umbuchung"] = 1
         uk = kategorien.umbuchung_kategorie_id()
@@ -104,7 +107,9 @@ def gedaechtnis_vorschlag(b):
     if not b["partner_key"]:
         return None
     rows = q("SELECT kategorie_id, person_id FROM buchung WHERE partner_key = ? AND geprueft = 1 "
-             "AND kategorie_id IS NOT NULL AND ist_umbuchung = 0 AND id != ? ORDER BY buchungsdatum DESC LIMIT 20",
+             "AND kategorie_id IS NOT NULL AND ist_umbuchung = 0 AND id != ? "
+             "AND NOT EXISTS (SELECT 1 FROM buchung_split s WHERE s.buchung_id = buchung.id) "
+             "ORDER BY buchungsdatum DESC LIMIT 20",
              (b["partner_key"], b["id"]))
     if not rows:
         return None
@@ -114,16 +119,19 @@ def gedaechtnis_vorschlag(b):
 
 
 def ordne_zu(buchung_ids: list[int] | None = None, ueberschreiben=False) -> dict:
-    """Wendet Regeln und Gedächtnis an. ueberschreiben=True ordnet auch bereits automatisch zugeordnete neu."""
+    """Wendet Regeln, Gedächtnis und Lernmodell an. Ohne buchung_ids: alle noch nicht zugeordneten Buchungen
+    (mit ueberschreiben=True auch bereits automatisch zugeordnete)."""
+    from . import modell as modell_mod
     regeln = aktive_regeln()
     if buchung_ids is None:
         rows = q("SELECT * FROM buchung WHERE COALESCE(zuordnung_quelle,'') NOT IN ('manuell','umbuchung')")
     else:
         if not buchung_ids:
-            return {"regel": 0, "gedaechtnis": 0, "offen": 0}
+            return {"regel": 0, "gedaechtnis": 0, "modell": 0, "offen": 0}
         marks = ",".join("?" * len(buchung_ids))
         rows = q(f"SELECT * FROM buchung WHERE id IN ({marks})", buchung_ids)
-    stat = {"regel": 0, "gedaechtnis": 0, "offen": 0}
+    stat = {"regel": 0, "gedaechtnis": 0, "modell": 0, "offen": 0}
+    lern = None
     for b in rows:
         if b["zuordnung_quelle"] in ("manuell", "umbuchung"):
             continue
@@ -133,9 +141,13 @@ def ordne_zu(buchung_ids: list[int] | None = None, ueberschreiben=False) -> dict
         if treffer:
             w = zielwerte(treffer, b)
             exe("UPDATE buchung SET kategorie_id = COALESCE(?, kategorie_id), person_id = COALESCE(?, person_id), "
-                "abrechnungsmonat = ?, ist_umbuchung = ?, zuordnung_quelle = 'regel', regel_id = ?, geprueft = 1 WHERE id = ?",
+                "abrechnungsmonat = ?, ist_umbuchung = ?, verteilung_monate = COALESCE(?, verteilung_monate), "
+                "zuordnung_quelle = 'regel', regel_id = ?, geprueft = 1, konfidenz = NULL, "
+                "vorschlag_kategorie_id = NULL WHERE id = ?",
                 (w.get("kategorie_id"), w.get("person_id"), w["abrechnungsmonat"], w.get("ist_umbuchung", b["ist_umbuchung"]),
-                 treffer["id"], b["id"]))
+                 w.get("verteilung_monate"), treffer["id"], b["id"]))
+            if w.get("tag_id"):
+                exe("INSERT OR IGNORE INTO buchung_tag (buchung_id, tag_id) VALUES (?, ?)", (b["id"], w["tag_id"]))
             stat["regel"] += 1
             continue
         if b["ist_umbuchung"]:
@@ -144,12 +156,35 @@ def ordne_zu(buchung_ids: list[int] | None = None, ueberschreiben=False) -> dict
         if g:
             sicher = g["anzahl"] >= 2 and g["anzahl"] == g["gesamt"]
             exe("UPDATE buchung SET kategorie_id = ?, person_id = COALESCE(?, person_id), zuordnung_quelle = 'gedaechtnis', "
-                "regel_id = NULL, geprueft = ? WHERE id = ?",
-                (g["kategorie_id"], g["person_id"], 1 if sicher else 0, b["id"]))
+                "regel_id = NULL, geprueft = ?, konfidenz = ?, vorschlag_kategorie_id = NULL WHERE id = ?",
+                (g["kategorie_id"], g["person_id"], 1 if sicher else 0, g["anzahl"] / g["gesamt"], b["id"]))
             stat["gedaechtnis"] += 1
+            continue
+        if lern is None:
+            lern = modell_mod.Modell().trainiere()
+        kat, p = lern.vorhersage(b)
+        if kat and p >= modell_mod.SICHER:
+            exe("UPDATE buchung SET kategorie_id = ?, zuordnung_quelle = 'modell', regel_id = NULL, geprueft = 0, "
+                "konfidenz = ?, vorschlag_kategorie_id = NULL WHERE id = ?", (kat, round(p, 3), b["id"]))
+            stat["modell"] += 1
         else:
+            if kat and p >= modell_mod.VORSCHLAG:
+                exe("UPDATE buchung SET vorschlag_kategorie_id = ?, konfidenz = ? WHERE id = ?", (kat, round(p, 3), b["id"]))
             stat["offen"] += 1
     return stat
+
+
+def feedback(b, neue_kategorie_id) -> None:
+    """Merkt, ob die automatische Zuordnung oder der Vorschlag richtig war (für die Trefferquote)."""
+    if b["zuordnung_quelle"] == "regel" and b["kategorie_id"]:
+        if b["kategorie_id"] != neue_kategorie_id:  # Regeltreffer gelten als richtig, solange niemand korrigiert
+            exe("INSERT INTO zuordnung_feedback (buchung_id, quelle, korrekt) VALUES (?, 'regel', 0)", (b["id"],))
+    elif b["zuordnung_quelle"] in ("gedaechtnis", "modell") and b["kategorie_id"] and not b["geprueft"]:
+        exe("INSERT INTO zuordnung_feedback (buchung_id, quelle, konfidenz, korrekt) VALUES (?,?,?,?)",
+            (b["id"], b["zuordnung_quelle"], b["konfidenz"], int(b["kategorie_id"] == neue_kategorie_id)))
+    elif not b["kategorie_id"] and b["vorschlag_kategorie_id"]:
+        exe("INSERT INTO zuordnung_feedback (buchung_id, quelle, konfidenz, korrekt) VALUES (?,?,?,?)",
+            (b["id"], "vorschlag", b["konfidenz"], int(b["vorschlag_kategorie_id"] == neue_kategorie_id)))
 
 
 def teste_regel(bedingungen: list, aktionen: dict, sichtbare_konten: list[int]) -> dict:

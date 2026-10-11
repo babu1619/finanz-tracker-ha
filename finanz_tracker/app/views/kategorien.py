@@ -46,6 +46,8 @@ def bearbeiten(kid):
                 return redirect(url_for("kategorien.bearbeiten", kid=kid))
             ziel = int_oder_none(request.form.get("ziel_id"))
             exe("UPDATE buchung SET kategorie_id = ? WHERE kategorie_id = ?", (ziel, kid))
+            exe("UPDATE buchung_split SET kategorie_id = ? WHERE kategorie_id = ?", (ziel, kid))
+            exe("UPDATE budget SET aktiv = 0 WHERE kategorie_id = ?", (kid,))
             exe("DELETE FROM kategorie WHERE id = ?", (kid,))
             log_aenderung(g.user["id"], "kategorie", kid, "geloescht", {"ziel": ziel})
             commit()

@@ -181,6 +181,7 @@ def rueckgaengig(lauf_id) -> int:
         partner = q1("SELECT umbuchung_partner_id FROM buchung WHERE id = ?", (i,))
         if partner and partner["umbuchung_partner_id"]:
             umbuchungen.loese(i)
+    exe("DELETE FROM ruecklage_bewegung WHERE buchung_id IN (SELECT id FROM buchung WHERE importlauf_id = ?)", (lauf_id,))
     exe("DELETE FROM buchung WHERE importlauf_id = ?", (lauf_id,))
     exe("UPDATE importlauf SET rueckgaengig = 1 WHERE id = ?", (lauf_id,))
     return len(ids)

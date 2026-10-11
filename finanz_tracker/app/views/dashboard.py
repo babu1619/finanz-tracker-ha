@@ -2,7 +2,8 @@ from flask import Blueprint, render_template, request
 
 from .. import auth
 from ..db import q
-from ..services import importer, statistik, umbuchungen
+from ..services import budgets, importer, ruecklagen, statistik, umbuchungen, vertraege
+from ..db import commit
 from ..util import monat_plus
 from . import monat_param, int_oder_none
 
@@ -32,6 +33,11 @@ def index():
         for k in q(f"SELECT * FROM konto WHERE id IN ({marks}) AND aktiv = 1 ORDER BY typ = 'darlehen', sortierung, name",
                    sichtbar):
             saldo = importer.kontostand(k["id"])
+            if k["typ"] == "darlehen" and not q("SELECT 1 FROM buchung WHERE konto_id = ? LIMIT 1", (k["id"],)):
+                from ..services import darlehen as dl
+                d = dl.lade(k["id"])
+                if d:  # ohne importierte Buchungen: Restschuld laut Plan
+                    saldo = -dl.kennzahlen(d)["restschuld"]
             letzter = importer.letzter_import(k["id"])
             tage = importer.tage_seit(letzter["zeitpunkt"]) if letzter else None
             konto_rows.append({"k": k, "saldo": saldo, "letzter": letzter, "tage": tage,
@@ -46,10 +52,21 @@ def index():
                    f"AND geprueft = 0 AND ist_umbuchung = 0", konten)[0]["n"] if konten else 0
     saldo_warnungen = [r for r in konto_rows if r["letzter"] and r["letzter"]["saldo_differenz_cent"]]
     personen = q("SELECT * FROM person WHERE aktiv = 1 ORDER BY name")
+    # Budgets: die kritischsten zuerst
+    bue = budgets.uebersicht(konten, monat)
+    budget_top = sorted([z for z in bue["zeilen"] if not z["unterbudget"]], key=lambda z: -z["quote"])[:6]
+    # Sparen
+    from .sparen import sparkennzahlen
+    from .darlehen import hinweise as darlehen_hinweise
+    spar = sparkennzahlen(konten, sichtbar, monat)
+    ziele = [e for e in ruecklagen.uebersicht(konten)["liste"] if e["r"]["ziel_cent"] and e["r"]["aktiv"]][:4]
+    commit()
+    vt_hinweise = [v for v in vertraege.erkenne(konten) if v["art"] in ("fix", "abo") and (v["aenderung"] or v["ausgeblieben"])]
     max_kat = max([k["betrag"] for k in kat] + [1])
     return render_template(
         "dashboard.html", monat=monat, vor=monat_plus(monat, -1), nach=monat_plus(monat, 1),
         werte=werte, vormonat=vormonat, kat=kat, max_kat=max_kat, verlauf=verlauf, max_verlauf=max_verlauf,
         konten=konto_rows, vermoegen=vermoegen, ohne_kat=ohne_kat, ungeprueft=ungeprueft,
         umbuchungs_vorschlaege=len(umbuchungen.offene_vorschlaege(sichtbar)), saldo_warnungen=saldo_warnungen,
-        personen=personen, person_id=person_id)
+        personen=personen, person_id=person_id, bue=bue, budget_top=budget_top, spar=spar, ziele=ziele,
+        vt_hinweise=vt_hinweise, darlehen_hinweise=darlehen_hinweise(sichtbar))

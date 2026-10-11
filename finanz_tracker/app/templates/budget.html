@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_select, person_select with context %}
+{% block titel %}Budget{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('budgets.index') }}">‹ Budgets</a></div>
+<form method="post" class="karte" style="display:flex;flex-direction:column;gap:12px;max-width:720px">{{ csrf() }}
+  <h1>Budget {{ b.pfad }}</h1>
+  <div class="formreihe">
+    <label class="feld" style="flex:2 1 220px">Kategorie{{ kat_select('kategorie_id', kategorien, b.kategorie_id) }}</label>
+    <label class="feld">Betrag<input type="text" name="betrag" inputmode="decimal" value="{{ ('%.2f'|format(b.betrag_cent / 100)).replace('.', ',') }}" required></label>
+    <label class="feld">Rhythmus<select name="rhythmus"><option value="monat">pro Monat</option><option value="jahr" {{ 'selected' if b.rhythmus == 'jahr' }}>pro Jahr</option></select></label>
+  </div>
+  <div class="formreihe">
+    <label class="feld">Person{{ person_select('person_id', personen, b.person_id, 'alle / gemeinsam') }}</label>
+    <label class="feld">Gültig ab<input type="month" name="gueltig_ab" value="{{ b.gueltig_ab }}" style="min-height:40px"></label>
+    <label class="feld">Warnen ab<select name="warnschwelle">{% for w in [75, 80, 90, 100] %}<option value="{{ w }}" {{ 'selected' if w == b.warnschwelle }}>{{ w }} %</option>{% endfor %}</select></label>
+  </div>
+  <label class="check"><input type="checkbox" name="uebertrag" value="1" {{ 'checked' if b.uebertrag }}> Rest in den Folgemonat übertragen (innerhalb des Kalenderjahres)</label>
+  <div class="formreihe"><button class="btn primaer" type="submit">Speichern</button></div>
+</form>
+<form method="post" class="karte" data-frage="Budget löschen?" style="max-width:720px">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen">
+  <button class="btn gefahr" type="submit">Budget löschen</button></form>
+{% endblock %}

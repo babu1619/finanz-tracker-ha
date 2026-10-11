@@ -8,7 +8,7 @@
     <h1>{{ k.name if k else 'Neues Konto' }}</h1>
     <div class="formreihe">
       <label class="feld" style="flex:2 1 220px">Name<input type="text" name="name" value="{{ k.name if k }}" required></label>
-      <label class="feld">Typ<select name="typ">{% for t, n in typen.items() %}<option value="{{ t }}" {{ 'selected' if k and k.typ == t }}>{{ n }}</option>{% endfor %}</select></label>
+      <label class="feld">Typ<select name="typ">{% for t, n in typen.items() %}<option value="{{ t }}" {{ 'selected' if (k and k.typ == t) or (not k and request.args.get('typ') == t) }}>{{ n }}</option>{% endfor %}</select></label>
     </div>
     <div class="formreihe">
       <label class="feld" style="flex:2 1 240px">IBAN (für automatische Erkennung und Umbuchungen)<input type="text" name="iban" value="{{ k.iban or '' if k }}" class="mono"></label>

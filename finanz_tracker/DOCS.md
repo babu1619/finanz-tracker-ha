@@ -5,7 +5,18 @@ alle Daten bleiben lokal in `/data/finanz.db` und sind Teil jedes Home-Assistant
 
 ## Aufruf
 
-`http://homeassistant.local:8099` (oder `http://<IP-des-Green>:8099`). Beim ersten Aufruf wird der Admin angelegt.
+`https://<IP-des-Green>:8099` (http:// wird automatisch umgeleitet). Beim ersten Aufruf wird der Admin angelegt.
+
+Damit Browser dem eigenen Zertifikat vertrauen und Chrome auf Android die Seite als App installieren kann, einmal pro
+Gerät die Heim-CA installieren: in der App unter **Mehr › App & Zertifikat** (Download und Schritt-für-Schritt-Anleitung).
+
+## Optionen
+
+- `https` – Verschlüsselung an/aus (Standard: an)
+- `zertifikat` – `eigenes` (Heim-CA des Add-ons) oder `homeassistant` (Zertifikat aus `/ssl`, z. B. Let's Encrypt)
+- `zusatz_hostnamen` – weitere Namen oder IPs für das eigene Zertifikat, mit Komma getrennt (z. B. Tailscale)
+- `certfile`, `keyfile` – Dateinamen in `/ssl` bei `zertifikat: homeassistant`
+- `admin_passwort_reset` – Notfall: neues Admin-Passwort, Add-on neu starten, Option wieder leeren
 
 ## Erste Schritte
 
@@ -21,5 +32,5 @@ Den Port 8099 nicht im Router freigeben. Für den Zugriff von außen ein VPN nut
 
 ## Sicherung
 
-Verwaltung › „Datenbank herunterladen“ erzeugt eine Kopie. Zusätzlich sichert Home Assistant das Add-on
-in seinen normalen Backups.
+Verwaltung › „Verschlüsselte Sicherung“ (.ftbak, mit Passwort) oder „Datenbank herunterladen“. Zusätzlich sichert
+Home Assistant das Add-on in seinen normalen Backups.

@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, klappe with context %}
+{% block titel %}#{{ t.name }}{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('tags.index') }}">‹ Tags</a>
+  <div class="rechts"><a class="btn" href="{{ url_for('buchungen.liste', tag=t.id, monat='alle') }}">Buchungen ansehen</a>
+    <a class="btn" href="{{ url_for('buchungen.export', tag=t.id, monat='alle') }}">CSV exportieren (z. B. für die Steuer)</a></div></div>
+<div class="kopf"><h1>#{{ t.name }}</h1>{% if t.start %}<span class="leise">{{ t.start|datum }} – {{ (t.ende or t.start)|datum }}</span>{% endif %}</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Ausgaben</div><div class="wert">{{ summen.aus|euro }}</div><div class="unter">{{ summen.n }} Buchungen{% if summen.ein %} · Erstattungen {{ summen.ein|euro }}{% endif %}</div></div>
+  {% if t.budget_cent %}<div class="kpi"><div class="label">Budget</div><div class="wert {{ 'pos' if summen.aus - summen.ein <= t.budget_cent }}">{{ t.budget_cent|euro_rund }}</div>
+    <div class="unter">{% set rest = t.budget_cent - summen.aus + summen.ein %}{% if rest >= 0 %}{{ rest|euro_rund }} übrig{% else %}{{ (-rest)|euro_rund }} drüber{% endif %}</div>
+    <div class="fortschritt" style="margin-top:8px"><span class="{{ 'ueber' if rest < 0 }}" style="width: {{ [((summen.aus - summen.ein) / t.budget_cent * 100), 100]|min }}%"></span></div></div>{% endif %}
+</div>
+
+{% if nach_kat %}
+<section class="karte">
+  <h2>Nach Kategorie</h2>
+  {% set mx = nach_kat[0].summe or 1 %}
+  {% for k in nach_kat %}<div class="katzeile"><span class="name" title="{{ k.pfad }}">{{ k.pfad.split(' › ')[-1] }}</span><span class="balken"><span style="width: {{ (k.summe / mx * 100)|round(1) }}%"></span></span><span class="b mono">{{ k.summe|euro_rund }}</span></div>{% endfor %}
+</section>
+{% endif %}
+
+{% if kandidaten %}
+<form method="post" class="karte ohne-rand">{{ csrf() }}<input type="hidden" name="aktion" value="markieren">
+  <div class="kopf"><h2 style="margin:0">Ausgaben im Zeitraum ohne diesen Tag ({{ kandidaten|length }})</h2>
+    <button class="btn primaer rechts" type="submit">Ausgewählte markieren</button></div>
+  <div class="scroll"><table class="tab"><thead><tr><th style="width:30px"><input type="checkbox" id="alle" aria-label="Alle auswählen"></th><th>Datum</th><th>Gegenpartei</th><th>Kategorie</th><th style="text-align:right">Betrag</th></tr></thead>
+    <tbody>{% for b in kandidaten %}<tr><td><input type="checkbox" name="ids" value="{{ b.id }}" aria-label="auswählen"></td><td class="mono">{{ b.buchungsdatum|datum }}</td>
+      <td><b>{{ b.gegenpartei or '–' }}</b><div class="leise">{{ b.konto_name }} · {{ b.verwendungszweck|truncate(60) }}</div></td><td class="leise">{{ b.kat_pfad or '' }}</td><td class="betrag">{{ b.betrag_cent|euro_vz }}</td></tr>{% endfor %}</tbody></table></div>
+</form>
+{% endif %}
+
+{% if darf_schreiben %}
+{% call klappe('tag-bearbeiten', 'Tag bearbeiten') %}
+<form method="post" class="formreihe">{{ csrf() }}<input type="hidden" name="aktion" value="speichern">
+  <label class="feld" style="flex:2 1 200px">Name<input type="text" name="name" value="{{ t.name }}" required></label>
+  <label class="feld">von<input type="date" name="start" value="{{ t.start or '' }}" style="min-height:40px"></label>
+  <label class="feld">bis<input type="date" name="ende" value="{{ t.ende or '' }}" style="min-height:40px"></label>
+  <label class="feld">Budget<input type="text" name="budget" inputmode="decimal" value="{{ ('%.2f'|format(t.budget_cent / 100)).replace('.', ',') if t.budget_cent }}"></label>
+  <label class="feld" style="flex:2 1 200px">Notiz<input type="text" name="notiz" value="{{ t.notiz or '' }}"></label>
+  <button class="btn primaer" type="submit">Speichern</button>
+</form>
+<form method="post" data-frage="Tag löschen? Die Buchungen bleiben erhalten." style="margin-top:12px">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen"><button class="btn gefahr" type="submit">Tag löschen</button></form>
+{% endcall %}
+{% endif %}
+{% endblock %}

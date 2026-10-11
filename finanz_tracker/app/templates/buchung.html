@@ -1,12 +1,12 @@
-{% extends "base.html" %}{% from "_makros.html" import csrf, kat_suche, person_select, quelle with context %}
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_suche, kat_select, person_select, quelle, tagliste with context %}
 {% block titel %}Buchung{% endblock %}
 {% block inhalt %}
 <div class="kopf"><a href="{{ zurueck or url_for('buchungen.liste') }}">‹ zurück</a></div>
 <div class="reihe">
   <section class="karte breit">
-    <div class="leise">{{ b.buchungsdatum|datum }}{% if b.valuta and b.valuta != b.buchungsdatum %} · Valuta {{ b.valuta|datum }}{% endif %} · {{ b.konto_name }}</div>
+    <div class="leise">{{ b.buchungsdatum|datum }}{% if b.valuta and b.valuta != b.buchungsdatum %} · Valuta {{ b.valuta|datum }}{% endif %} · {{ b.konto_name }}{% if b.manuell_erfasst %} · bar erfasst{% endif %}</div>
     <h1 style="margin:4px 0">{{ b.gegenpartei or '–' }}</h1>
-    <div class="mono {{ 'pos' if b.betrag_cent > 0 }}" style="font-size:26px;font-weight:600">{{ b.betrag_cent|euro_vz }}</div>
+    <div class="mono {{ 'pos' if b.betrag_cent > 0 }}" style="font-size:26px;font-weight:600" id="buchungsbetrag" data-cent="{{ b.betrag_cent }}">{{ b.betrag_cent|euro_vz }}</div>
     <p>{{ b.verwendungszweck }}</p>
     {% if b.gegen_iban %}<p class="leise">Gegen-IBAN {{ b.gegen_iban }}</p>{% endif %}
     {% if b.ist_umbuchung %}
@@ -14,16 +14,57 @@
       {% if darf_schreiben %}<form method="post" style="display:inline">{{ csrf() }}<input type="hidden" name="aktion" value="umbuchung_loesen"><input type="hidden" name="zurueck" value="{{ zurueck }}"><button class="btn klein" type="submit">Verknüpfung lösen</button></form>{% endif %}</div>
     {% endif %}
     <p class="leise">Zuordnung: {{ quelle(b) or 'noch keine' }}</p>
+    {% if vorschlag %}<p class="leise">Vorschlag des Lernmodells: <b>{{ vorschlag.pfad }}</b> ({{ (b.konfidenz * 100)|round|int }} %)</p>{% endif %}
+    {% if tags %}<p>{{ tagliste(tags) }}</p>{% endif %}
+    {% if split_liste %}
+      <h3 style="margin-top:16px">Aufgeteilt</h3>
+      <table class="tab"><tbody>{% for s in split_liste %}
+        <tr><td style="padding-left:0">{{ s.kat_pfad or '–' }}{% if s.person_name %}<div class="leise">{{ s.person_name }}</div>{% endif %}{% if s.notiz %}<div class="klein">{{ s.notiz }}</div>{% endif %}</td>
+          <td class="betrag" style="padding-right:0">{{ s.betrag_cent|euro_vz }}</td></tr>{% endfor %}</tbody></table>
+    {% endif %}
   </section>
 
   {% if darf_schreiben and not b.ist_umbuchung %}
-  <form method="post" class="karte schmal" style="display:flex;flex-direction:column;gap:12px">
+  <form method="post" class="karte schmal" style="display:flex;flex-direction:column;gap:12px" id="buchung-form">
     {{ csrf() }}<input type="hidden" name="zurueck" value="{{ zurueck }}">
     <h2 style="margin:0">Zuordnen</h2>
-    <label class="feld">Kategorie{{ kat_suche('kategorie_id', kategorien, b.kategorie_id) }}</label>
+    <div id="einzelkategorie" {{ 'hidden' if split_liste or split_offen }}>
+      <label class="feld">Kategorie{{ kat_suche('kategorie_id', kategorien, b.kategorie_id if not split_liste else None) }}</label>
+    </div>
+    <label class="check"><input type="checkbox" name="aufteilen" value="1" id="aufteilen" {{ 'checked' if split_liste or split_offen }}> Auf mehrere Kategorien aufteilen</label>
+    <fieldset id="split-editor" class="split-editor" {{ 'hidden' if not (split_liste or split_offen) }}>
+      <legend class="leise">Teile (Summe muss {{ b.betrag_cent|euro }} ergeben)</legend>
+      <div id="split-zeilen">
+        {% set vorhandene = split_liste if split_liste else [{'betrag_cent': b.betrag_cent, 'kategorie_id': b.kategorie_id, 'person_id': None, 'notiz': ''}, {'betrag_cent': 0, 'kategorie_id': None, 'person_id': None, 'notiz': ''}] %}
+        {% for s in vorhandene %}
+        <div class="split-zeile">
+          <label class="feld">Betrag<input type="text" inputmode="decimal" name="split_betrag" value="{{ ('%.2f'|format((s.betrag_cent|abs) / 100)).replace('.', ',') if s.betrag_cent else '' }}" placeholder="0,00"></label>
+          <label class="feld" style="flex:2 1 180px">Kategorie{{ kat_select('split_kategorie', kategorien, s.kategorie_id, '– wählen –') }}</label>
+          <label class="feld">Person{{ person_select('split_person', personen, s.person_id, 'wie Buchung') }}</label>
+          <label class="feld" style="flex:2 1 140px">Notiz<input type="text" name="split_notiz" value="{{ s.notiz or '' }}" placeholder="optional"></label>
+          <button type="button" class="btn klein split-weg" aria-label="Teil entfernen">✕</button>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="formreihe" style="align-items:center">
+        <button type="button" class="btn klein" id="split-neu">+ Teil</button>
+        <button type="button" class="btn klein" id="split-rest">Rest in letzten Teil</button>
+        <span class="leise" id="split-status" aria-live="polite"></span>
+      </div>
+    </fieldset>
     <label class="feld">Person{{ person_select('person_id', personen, b.person_id) }}</label>
-    <label class="feld">Abrechnungsmonat
-      <select name="abrechnungsmonat">{% for m in monate %}<option value="{{ m }}" {{ 'selected' if m == b.abrechnungsmonat }}>{{ m|monat }}{% if m == b.buchungsdatum[:7] %} (Buchungsmonat){% endif %}</option>{% endfor %}</select></label>
+    <div class="formreihe">
+      <label class="feld">Abrechnungsmonat
+        <select name="abrechnungsmonat">{% for m in monate %}<option value="{{ m }}" {{ 'selected' if m == b.abrechnungsmonat }}>{{ m|monat }}{% if m == b.buchungsdatum[:7] %} (Buchungsmonat){% endif %}</option>{% endfor %}</select></label>
+      <label class="feld">Verteilen auf
+        <select name="verteilung_monate">{% for v in [1,2,3,4,6,12,24] %}<option value="{{ v }}" {{ 'selected' if v == b.verteilung_monate }}>{{ 'nicht verteilen' if v == 1 else v ~ ' Monate' }}</option>{% endfor %}
+          {% if b.verteilung_monate not in [1,2,3,4,6,12,24] %}<option value="{{ b.verteilung_monate }}" selected>{{ b.verteilung_monate }} Monate</option>{% endif %}</select></label>
+    </div>
+    <label class="feld">Tags (mit Komma trennen)<input type="text" name="tags" value="{{ tags|map(attribute='name')|join(', ') }}" list="tag-vorschlaege" placeholder="z. B. Urlaub Italien 2026, Steuer 2026" data-mehrfach></label>
+    <datalist id="tag-vorschlaege">{% for t in alle_tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
+    {% if b.betrag_cent < 0 and ruecklagen %}
+    <label class="feld">Bezahlt aus Rücklage<select name="ruecklage_id"><option value="">– nein –</option>{% for r in ruecklagen %}<option value="{{ r.id }}" {{ 'selected' if b.ruecklage_id == r.id }}>{{ r.name }} ({{ r.konto_name }})</option>{% endfor %}</select></label>
+    {% else %}<input type="hidden" name="ruecklage_id" value="{{ b.ruecklage_id or '' }}">{% endif %}
     <label class="feld">Notiz<input type="text" name="notiz" value="{{ b.notiz or '' }}" placeholder="optional"></label>
     <div class="formreihe">
       <button class="btn primaer" type="submit">Speichern</button>
@@ -32,4 +73,8 @@
   </form>
   {% endif %}
 </div>
+{% if darf_schreiben and b.manuell_erfasst %}
+<form method="post" class="karte" data-frage="Diese bar erfasste Buchung löschen?">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen"><input type="hidden" name="zurueck" value="{{ zurueck }}">
+  <button class="btn gefahr" type="submit">Bar erfasste Buchung löschen</button></form>
+{% endif %}
 {% endblock %}

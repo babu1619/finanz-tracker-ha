@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block titel %}Finanzen{% endblock %} · Finanz-Tracker</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ version }}">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230F6B5C'/%3E%3Cpath d='M9 22V10h12M9 16h9' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+<link rel="manifest" href="{{ url_for('pwa.manifest') }}">
+<meta name="theme-color" content="#18211E">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Finanzen">
+<meta name="application-name" content="Finanzen">
 </head>
 <body>
 {% if user %}
@@ -16,13 +23,27 @@
     <a href="{{ url_for('dashboard.index') }}" class="{{ 'aktiv' if ep.startswith('dashboard') }}">Dashboard</a>
     <a href="{{ url_for('buchungen.liste') }}" class="{{ 'aktiv' if ep.startswith('buchungen') }}">Buchungen</a>
     {% if darf_schreiben %}<a href="{{ url_for('pruefen.index') }}" class="{{ 'aktiv' if ep.startswith('pruefen') }}">Prüfen{% if offen and (offen.pruefen + offen.umbuchungen) %}<span class="zahl">{{ offen.pruefen + offen.umbuchungen }}</span>{% endif %}</a>{% endif %}
-    <a href="{{ url_for('kategorien.liste') }}" class="{{ 'aktiv' if ep.startswith('kategorien') }}">Kategorien</a>
-    <a href="{{ url_for('regeln.liste') }}" class="{{ 'aktiv' if ep.startswith('regeln') }}">Regeln</a>
-    <a href="{{ url_for('konten.liste') }}" class="{{ 'aktiv' if ep.startswith('konten') }}">Konten</a>
+    <a href="{{ url_for('budgets.index') }}" class="{{ 'aktiv' if ep.startswith('budgets') }}">Budgets</a>
+    <a href="{{ url_for('sparen.index') }}" class="{{ 'aktiv' if ep.startswith('sparen') }}">Sparen</a>
+    <a href="{{ url_for('auswertung.index') }}" class="{{ 'aktiv' if ep.startswith('auswertung') }}">Auswertung</a>
+    <a href="{{ url_for('darlehen.index') }}" class="{{ 'aktiv' if ep.startswith('darlehen') }}">Darlehen</a>
     {% if darf_schreiben %}<a href="{{ url_for('importe.index') }}" class="{{ 'aktiv' if ep.startswith('importe') }}">Import</a>{% endif %}
-    {% if user.rolle == 'admin' %}<a href="{{ url_for('admin.index') }}" class="{{ 'aktiv' if ep.startswith('admin') }}">Verwaltung</a>{% endif %}
+    {% set mehr_aktiv = ep.split('.')[0] in ('kategorien', 'regeln', 'tags', 'vertraege', 'konten', 'admin', 'pwa') %}
+    <details class="mehr{{ ' aktiv' if mehr_aktiv }}">
+      <summary>Mehr</summary>
+      <div class="menue">
+        <a href="{{ url_for('kategorien.liste') }}" class="{{ 'aktiv' if ep.startswith('kategorien') }}">Kategorien</a>
+        <a href="{{ url_for('regeln.liste') }}" class="{{ 'aktiv' if ep.startswith('regeln') }}">Regeln</a>
+        <a href="{{ url_for('tags.index') }}" class="{{ 'aktiv' if ep.startswith('tags') }}">Tags</a>
+        <a href="{{ url_for('vertraege.index') }}" class="{{ 'aktiv' if ep.startswith('vertraege') }}">Abos &amp; Verträge</a>
+        <a href="{{ url_for('konten.liste') }}" class="{{ 'aktiv' if ep.startswith('konten') }}">Konten</a>
+        {% if user.rolle == 'admin' %}<a href="{{ url_for('admin.index') }}" class="{{ 'aktiv' if ep.startswith('admin') }}">Verwaltung</a>{% endif %}
+        <a href="{{ url_for('pwa.zertifikat') }}" class="{{ 'aktiv' if ep == 'pwa.zertifikat' }}">App &amp; Zertifikat</a>
+      </div>
+    </details>
   </nav>
   <div class="wer">
+    {% if darf_schreiben %}<a class="plus" href="{{ url_for('erfassen.index') }}" title="Bar erfassen" aria-label="Bar erfassen">+ Bar</a>{% endif %}
     <a href="{{ url_for('auth.passwort') }}" title="Passwort ändern">{{ user.name }}</a>
     <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button type="submit">Abmelden</button></form>
   </div>

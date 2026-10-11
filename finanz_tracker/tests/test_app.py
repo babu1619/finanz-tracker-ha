@@ -33,6 +33,14 @@ class Grundlagen(unittest.TestCase):
         with self.assertRaises(ValueError):
             csvimport.parse_betrag("abc")
 
+    def test_euro_eingabe(self):
+        from app.util import parse_euro_eingabe
+        self.assertEqual(parse_euro_eingabe("1.000"), 100000)
+        self.assertEqual(parse_euro_eingabe("300.000"), 30000000)
+        self.assertEqual(parse_euro_eingabe("1.234,56"), 123456)
+        self.assertEqual(parse_euro_eingabe("12.50"), 1250)
+        self.assertEqual(parse_euro_eingabe("-17,99"), -1799)
+
     def test_euro(self):
         self.assertEqual(euro(-123456), "−1.234,56 €")
         self.assertEqual(euro(5, vorzeichen=True), "+0,05 €")
@@ -211,6 +219,9 @@ class Ablauf(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(r.data.startswith(b"SQLite format 3"))
 
+        # 10b. Version 0.2: Aufteilung, Verteilung, Tags, Budgets, Rücklagen, Darlehen, Auswertung, Schnellerfassung
+        self._phase34(db, markt, kat_lebensmittel)
+
         # 11. Import rückgängig
         lauf = db.execute("SELECT id FROM importlauf WHERE anzahl_neu = 2").fetchone()["id"]
         html = self.post(f"/import/lauf/{lauf}/rueckgaengig", {}, von=f"/import/lauf/{lauf}")
@@ -234,9 +245,237 @@ class Ablauf(unittest.TestCase):
         self.assertIn("Zu viele Fehlversuche", html)
         db.close()
 
+    def _phase34(self, db, markt, kat_lebensmittel):
+        from app.services import statistik, darlehen as dl, modell, zuordnung
+        from app.util import aktueller_monat
+        kat_haushalt = db.execute("SELECT id FROM kategorie WHERE name = 'Haushalt'").fetchone()["id"]
+        kat_streaming = db.execute("SELECT id FROM kategorie WHERE name = 'Streaming'").fetchone()["id"]
+
+        # Aufteilung mit falscher Summe wird abgelehnt
+        html = self.post(f"/buchungen/{markt}", {"aufteilen": "1", "split_betrag": ["60,00", "20,00"],
+                                                 "split_kategorie": [str(kat_lebensmittel), str(kat_haushalt)],
+                                                 "split_person": ["", ""], "split_notiz": ["", ""],
+                                                 "kategorie_id": str(kat_lebensmittel), "abrechnungsmonat": "2026-10",
+                                                 "verteilung_monate": "1", "tags": ""}, von=f"/buchungen/{markt}")
+        self.assertIn("Differenz", html)
+        self.assertEqual(db.execute("SELECT COUNT(*) AS n FROM buchung_split").fetchone()["n"], 0)
+        # richtige Aufteilung 60,00 + 26,40 und Tag
+        html = self.post(f"/buchungen/{markt}", {"aufteilen": "1", "split_betrag": ["60,00", "26,40"],
+                                                 "split_kategorie": [str(kat_lebensmittel), str(kat_haushalt)],
+                                                 "split_person": ["", ""], "split_notiz": ["", "Putzmittel"],
+                                                 "abrechnungsmonat": "2026-10", "verteilung_monate": "1",
+                                                 "tags": "Steuer 2026"}, von=f"/buchungen/{markt}")
+        self.assertIn("Buchung gespeichert", html)
+        teile = db.execute("SELECT betrag_cent FROM buchung_split WHERE buchung_id = ? ORDER BY id", (markt,)).fetchall()
+        self.assertEqual([t["betrag_cent"] for t in teile], [-6000, -2640])
+        with self.app.app_context():
+            kat = {k["name"]: k["betrag"] for k in statistik.ausgaben_nach_kategorie([1, 2], "2026-10")}
+        self.assertEqual(kat.get("Lebensmittel"), 6000)
+        self.assertEqual(kat.get("Haushalt"), 2640)
+        html = self.get(f"/buchungen/?kategorie={kat_haushalt}&monat=alle")
+        self.assertIn("SUPERMARKT", html)
+        self.assertIn("Aufgeteilt", html)
+        self.assertIn('<details class="karte klappe" id="suche"', html)  # Suche einklappbar
+        self.assertIn('id="aenderung"', html)  # Sammeländerung einklappbar
+        # Umsatzsummen im Monat bleiben gleich (Split ändert nur die Verteilung auf Kategorien)
+        self.assertIn("1.066 €", self.get("/?monat=2026-10"))
+
+        # Jahresabo auf 12 Monate verteilen (17,99 € -> 1,49 € je Monat, Rest 1,60 € im ersten Monat)
+        abo = db.execute("SELECT id FROM buchung WHERE gegenpartei = 'STREAMING DIENST'").fetchone()["id"]
+        self.post(f"/buchungen/{abo}", {"kategorie_id": str(kat_streaming), "abrechnungsmonat": "2026-09",
+                                         "verteilung_monate": "12", "tags": ""}, von=f"/buchungen/{abo}")
+        with self.app.app_context():
+            sep = {k["name"]: k["betrag"] for k in statistik.ausgaben_nach_kategorie([1, 2], "2026-09")}
+            okt = {k["name"]: k["betrag"] for k in statistik.ausgaben_nach_kategorie([1, 2], "2026-10")}
+            summe = sum(r["betrag"] for r in statistik.posten([1, 2], "2026-01", "2028-12") if r["buchung_id"] == abo)
+        self.assertEqual(sep.get("Freizeit"), 160)
+        self.assertEqual(okt.get("Freizeit"), 149)
+        self.assertEqual(summe, -1799)
+
+        # Tags und Steuer-Export
+        html = self.get("/tags/")
+        self.assertIn("Steuer 2026", html)
+        tid = db.execute("SELECT id FROM tag WHERE name = 'Steuer 2026'").fetchone()["id"]
+        self.get(f"/tags/{tid}")
+        r = self.c.get(f"/buchungen/export.csv?tag={tid}&monat=alle")
+        text = r.get_data(as_text=True)
+        self.assertIn("aufgeteilt", text)
+        self.assertIn("steuer-2026.csv", r.headers["Content-Disposition"])
+
+        # Budget: Lebensmittel 50 € im Oktober -> überschritten (60 €)
+        self.post("/budgets/neu", {"kategorie_id": str(kat_lebensmittel), "betrag": "50", "rhythmus": "monat",
+                                   "gueltig_ab": "2026-10", "warnschwelle": "90", "monat": "2026-10"}, von="/budgets/")
+        html = self.get("/budgets/?monat=2026-10")
+        self.assertIn("10 € drüber", html)
+
+        # Rücklage/Sparziel auf dem Tagesgeld, Entnahme über Buchung
+        jetzt = aktueller_monat()
+        self.post("/sparen/neu", {"name": "Neues Auto", "traeger_konto_id": "2", "bezug": "topf", "zufuehrung": "100",
+                                  "startbetrag": "400", "ziel": "1.000", "zieldatum": "2027-12", "start_monat": jetzt},
+                  von="/sparen/")
+        self.get("/sparen/")
+        self.get("/sparen/")  # Zuführungen sind idempotent
+        rid = db.execute("SELECT id FROM ruecklage").fetchone()["id"]
+        stand = db.execute("SELECT SUM(betrag_cent) AS s FROM ruecklage_bewegung WHERE ruecklage_id = ?", (rid,)).fetchone()["s"]
+        self.assertEqual(stand, 50000)
+        self.post(f"/buchungen/{abo}", {"kategorie_id": str(kat_streaming), "abrechnungsmonat": "2026-09",
+                                         "verteilung_monate": "12", "tags": "", "ruecklage_id": str(rid)},
+                  von=f"/buchungen/{abo}")
+        stand = db.execute("SELECT SUM(betrag_cent) AS s FROM ruecklage_bewegung WHERE ruecklage_id = ?", (rid,)).fetchone()["s"]
+        self.assertEqual(stand, 50000 - 1799)
+        html = self.get(f"/sparen/{rid}")
+        self.assertIn("Neues Auto", html)
+        self.assertIn("frei verfügbar", self.get("/sparen/"))
+
+        # Darlehen: Konditionen, Plan, Simulation; zählt nicht ins Dashboard
+        self.post("/darlehen/3/konditionen", {"ursprung": "300.000", "sollzins": "1,5", "rate": "1.200",
+                                              "erste_rate": "2020-01", "zinsbindung_bis": "2030-12",
+                                              "sondertilgung_prozent": "5", "erinnerung_monate": "24"},
+                  von="/darlehen/3/konditionen")
+        with self.app.app_context():
+            d = dl.lade(3)
+            plan = dl.plan(d)
+            self.assertEqual(plan[0]["zins"], 37500)
+            self.assertEqual(plan[0]["tilgung"], 82500)
+            self.assertEqual(plan[-1]["rest"], 0)
+            sim = dl.simuliere(d, 1000000, "2027-01")
+            self.assertGreater(sim["ersparnis"], 0)
+            self.assertGreater(sim["verkuerzung_monate"], 0)
+            self.assertEqual(sim["rest_zb_basis"] - sim["rest_zb_mit"] > 1000000, True)  # inkl. gesparter Zinsen
+        html = self.get("/darlehen/3?sim_betrag=10.000&sim_monat=2027-01")
+        self.assertIn("früher", html)
+        self.get("/darlehen/")
+        html = self.get("/?monat=2026-10")
+        self.assertIn("4.120 €", html)
+
+        # Auswertung, Verträge, Zertifikatseite
+        self.assertIn("Lebensmittel", self.get("/auswertung/?zeitraum=12&bis=2026-10"))
+        mob = db.execute("SELECT id FROM kategorie WHERE name = 'Mobilität'").fetchone()["id"]
+        self.get(f"/auswertung/?kategorie={mob}&zeitraum=jahr&jahr=2026")
+        self.get("/vertraege/")
+        self.get("/zertifikat")
+
+        # Schnellerfassung Bargeld
+        html = self.post("/erfassen/", {"konto_id": "1", "betrag": "12,50", "gegenpartei": "Bäcker",
+                                        "kategorie_id": str(kat_lebensmittel), "datum": "2026-10-05", "richtung": "aus"},
+                         von="/erfassen/")
+        self.assertIn("Erfasst: Bäcker 12,50", html)
+        bar = db.execute("SELECT * FROM buchung WHERE manuell_erfasst = 1").fetchone()
+        self.assertEqual((bar["betrag_cent"], bar["kategorie_id"]), (-1250, kat_lebensmittel))
+        self.post(f"/buchungen/{bar['id']}", {"aktion": "loeschen"}, von=f"/buchungen/{bar['id']}")
+        self.assertIsNone(db.execute("SELECT 1 FROM buchung WHERE manuell_erfasst = 1").fetchone())
+
+        # Lernmodell: ähnliche Texte, neue Gegenpartei
+        for i in range(24):
+            name, zweck, kat = (("BAECKEREI SONNE", "Kartenzahlung Baeckerei Sonne Broetchen", kat_lebensmittel) if i % 2
+                                else ("ARAL TANKSTELLE", "Kartenzahlung Tankstelle Super", kat_haushalt))
+            db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                       "abrechnungsmonat, kategorie_id, dedup_hash, zuordnung_quelle, geprueft) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 'manuell', 1)",
+                       (f"2025-0{1 + i % 9}-1{i % 9}", -1000 - i, name, zweck, name.lower(), f"2025-0{1 + i % 9}",
+                        kat, f"lern{i}"))
+        neu = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                         "abrechnungsmonat, dedup_hash) VALUES (1, '2025-10-01', -480, 'SONNE BACKWAREN KG', "
+                         "'Baeckerei Sonne Broetchen', 'sonne backwaren', '2025-10', 'lern-neu')").lastrowid
+        db.commit()
+        with self.app.app_context():
+            stat = zuordnung.ordne_zu([neu])
+            from app.db import commit
+            commit()
+        self.assertEqual(stat["modell"] + stat["offen"], 1)
+        b = db.execute("SELECT kategorie_id, vorschlag_kategorie_id, zuordnung_quelle FROM buchung WHERE id = ?", (neu,)).fetchone()
+        self.assertEqual(b["kategorie_id"] or b["vorschlag_kategorie_id"], kat_lebensmittel)
+        # Bestätigen erzeugt Feedback für die Trefferquote
+        self.post(f"/pruefen/{neu}", {"kategorie_id": str(kat_lebensmittel), "abrechnungsmonat": "2025-10"}, von="/pruefen/")
+        with self.app.app_context():
+            quoten = modell.trefferquoten()
+        self.assertTrue(any(qq["n"] >= 1 for qq in quoten))
+        self.assertIn("Trefferquote", self.get("/regeln/"))
+        db.execute("DELETE FROM buchung WHERE dedup_hash LIKE 'lern%'")
+        db.commit()
+
+        # Verschlüsselte Sicherung und Wiederherstellung
+        r = self.c.post("/verwaltung/sicherung", data={"passwort": "sicher123", "csrf": self._csrf})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.data.startswith(b"FTBAK1"))
+        self.assertNotIn(b"SQLite format 3", r.data)
+        sicherung = r.data
+        db.execute("UPDATE konto SET name = 'Umbenannt' WHERE id = 1")
+        db.commit()
+        html = self.post("/verwaltung/wiederherstellen", {"passwort": "falsch123",
+                                                          "datei": (io.BytesIO(sicherung), "s.ftbak")}, von="/verwaltung/")
+        self.assertIn("Passwort falsch", html)
+        html = self.post("/verwaltung/wiederherstellen", {"passwort": "sicher123",
+                                                          "datei": (io.BytesIO(sicherung), "s.ftbak")}, von="/verwaltung/")
+        self.assertIn("Sicherung wiederhergestellt", html)
+        self.assertEqual(db.execute("SELECT name FROM konto WHERE id = 1").fetchone()["name"], "Girokonto")
+        self.post("/login", {"name": "benjamin", "passwort": "geheim123"})
+
     def test_csrf(self):
         r = self.c.post("/login", data={"name": "x", "passwort": "y"})
         self.assertEqual(r.status_code, 400)
+
+
+class Https(unittest.TestCase):
+    """Zertifikate erzeugen, HTTPS-Server mit HTTP-Umleitung, PWA-Dateien."""
+
+    def test_tls_und_pwa(self):
+        import http.client
+        import ssl
+        import threading
+        from app import config, tls
+        from app.server import HttpsServer
+        config.ensure_dirs()
+        z = tls.bereite_vor()
+        self.assertEqual(z["quelle"], "eigenes")
+        alt = tls.SRV_CRT.stat().st_mtime_ns
+        tls.bereite_vor()
+        self.assertEqual(tls.SRV_CRT.stat().st_mtime_ns, alt, "Zertifikat darf nicht unnötig neu erzeugt werden")
+        info = tls.ca_info()
+        self.assertIn("localhost", info["server_namen"])
+        self.assertIn("127.0.0.1", info["server_namen"])
+
+        app = create_app({"TESTING": True})
+        server = HttpsServer("127.0.0.1", 0, app, tls.ssl_kontext(z))
+        port = server.server_address[1]
+        t = threading.Thread(target=server.serve_forever, daemon=True)
+        t.start()
+        try:
+            ctx = ssl.create_default_context(cafile=str(tls.CA_CRT))
+            for host in ("localhost", "127.0.0.1"):
+                con = http.client.HTTPSConnection(host, port, context=ctx, timeout=10)
+                con.request("GET", "/manifest.webmanifest")
+                r = con.getresponse()
+                self.assertEqual(r.status, 200)
+                self.assertIn("application/manifest+json", r.getheader("Content-Type"))
+                import json
+                m = json.loads(r.read())
+                self.assertEqual(m["display"], "standalone")
+                self.assertEqual({i["sizes"] for i in m["icons"]}, {"192x192", "512x512"})
+                con.close()
+            con = http.client.HTTPSConnection("localhost", port, context=ctx, timeout=10)
+            con.request("GET", "/sw.js")
+            r = con.getresponse()
+            self.assertEqual(r.status, 200)
+            self.assertIn("javascript", r.getheader("Content-Type"))
+            self.assertIn(b"addEventListener(\"fetch\"", r.read())
+            con.close()
+            # unverschlüsselte Anfrage auf demselben Port -> Umleitung auf https
+            con = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+            con.request("GET", "/buchungen/?monat=alle")
+            r = con.getresponse()
+            self.assertEqual(r.status, 301)
+            self.assertEqual(r.getheader("Location"), f"https://127.0.0.1:{port}/buchungen/?monat=alle")
+            con.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+        c = app.test_client()
+        r = c.get("/zertifikat/finanz-tracker-ca.crt")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data[:1], b"\x30")  # DER
+        self.assertEqual(c.get("/offline").status_code, 200)
+        for name in ("icon-192.png", "icon-512.png", "maskable-512.png"):
+            self.assertEqual(c.get(f"/static/icons/{name}").status_code, 200)
 
 
 if __name__ == "__main__":

@@ -40,7 +40,7 @@
     </div>
     <div class="karte pruefkarte">
       {% if vorschlag and vorschlag_pfad %}
-      <div class="vorschlag"><div style="flex:1"><div class="leise">{% if vorschlag.quelle == 'gedaechtnis' %}Vorschlag aus {{ vorschlag.anzahl or 'früheren' }} ähnlichen Buchungen{% elif vorschlag.quelle == 'regel' %}Von einer Regel gesetzt{% else %}Bisherige Zuordnung{% endif %}</div>
+      <div class="vorschlag"><div style="flex:1"><div class="leise">{% if vorschlag.quelle == 'gedaechtnis' %}Vorschlag aus {{ vorschlag.anzahl or 'früheren' }} ähnlichen Buchungen{% elif vorschlag.quelle == 'regel' %}Von einer Regel gesetzt{% elif vorschlag.quelle == 'modell' %}Vorschlag des Lernmodells{% if vorschlag.konfidenz %} · {{ (vorschlag.konfidenz * 100)|round|int }} % sicher{% endif %}{% else %}Bisherige Zuordnung{% endif %}</div>
         <b style="font-size:17px">{{ vorschlag_pfad }}</b></div><span class="leise klein">Enter übernimmt</span></div>
       {% endif %}
       <label class="feld">Kategorie{{ kat_suche('kategorie_id', kategorien, vorschlag.kategorie_id if vorschlag else None) }}</label>

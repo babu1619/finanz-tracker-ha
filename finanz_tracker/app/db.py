@@ -46,7 +46,19 @@ def migrate(path=None) -> int:
             num = int(f.name.split("_", 1)[0])
             if num <= current:
                 continue
-            conn.executescript("BEGIN;\n" + f.read_text(encoding="utf-8") + f"\nUPDATE schema_version SET version = {num};\nCOMMIT;")
+            # Fremdschlüssel aus, damit Tabellen-Neuaufbauten keine Kaskaden auslösen
+            conn.execute("PRAGMA foreign_keys = OFF")
+            try:
+                conn.executescript("BEGIN;\n" + f.read_text(encoding="utf-8")
+                                   + f"\nUPDATE schema_version SET version = {num};\nCOMMIT;")
+            except Exception:
+                if conn.in_transaction:
+                    conn.rollback()
+                raise
+            fehler = conn.execute("PRAGMA foreign_key_check").fetchall()
+            if fehler:
+                raise RuntimeError(f"Migration {f.name}: Fremdschlüssel verletzt ({len(fehler)} Zeilen)")
+            conn.execute("PRAGMA foreign_keys = ON")
             current = num
         return current
     finally:

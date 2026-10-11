@@ -1,0 +1,84 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_select, person_select, klappe with context %}
+{% block titel %}Sparen{% endblock %}
+{% block inhalt %}
+<div class="kopf"><h1>Sparen</h1><span class="leise">Rücklagen, Sparziele und Sparquote</span></div>
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Gespart {{ monat[:4] }}</div><div class="wert {{ 'pos' if k.gespart_jahr > 0 }}">{{ k.gespart_jahr|euro_rund }}</div>
+    <div class="unter">Einnahmen minus Ausgaben, Jan bis {{ monat|monat_kurz }}</div></div>
+  <div class="kpi"><div class="label">Sparquote {{ monat[:4] }}</div><div class="wert">{% if k.quote_jahr is not none %}{{ (k.quote_jahr * 100)|round|int }} %{% else %}–{% endif %}</div>
+    <div class="unter">Ziel {{ (k.ziel_quote * 100)|round|int }} %{% if k.quote_jahr is not none %} · {% if k.quote_jahr >= k.ziel_quote %}<span class="pos">erreicht</span>{% else %}{{ ((k.ziel_quote - k.quote_jahr) * 100)|round|int }} Punkte darunter{% endif %}{% endif %}</div></div>
+  <div class="kpi"><div class="label">Vermögensaufbau inkl. Tilgung</div><div class="wert">{{ k.aufbau_jahr|euro_rund }}</div>
+    <div class="unter">davon Tilgung Darlehen {{ k.tilgung_jahr|euro_rund }}</div></div>
+</div>
+
+<section class="karte">
+  <div class="kopf"><h2 style="margin:0">Sparquote je Monat</h2><span class="rechts leise">Linie = Ziel {{ (k.ziel_quote * 100)|round|int }} %</span></div>
+  <div class="scroll" style="margin-top:12px"><div style="min-width:360px">
+    <div class="balkenreihe" style="position:relative;height:140px;gap:8px">
+      <i style="position:absolute;left:0;right:0;bottom:{{ (k.ziel_quote * 100)|round|int }}%;border-top:2px dashed #C98A12"></i>
+      {% for v in k.monate %}{% set qv = v.sparquote if v.sparquote is not none else 0 %}
+      <span title="{{ v.monat|monat }}: {{ (qv * 100)|round|int }} %" style="height: {{ [[qv * 100, 0]|max, 100]|min }}%;{{ 'background:#C98A12' if qv < k.ziel_quote }}"></span>{% endfor %}
+    </div>
+    <div class="verlauf-lbl" style="min-width:0">{% for v in k.monate %}<span>{{ v.monat|monat_kurz }}</span>{% endfor %}</div>
+  </div></div>
+  {% if user.rolle == 'admin' %}
+  <form method="post" action="{{ url_for('sparen.sparquote') }}" class="formreihe" style="margin-top:12px">{{ csrf() }}
+    <label class="feld" style="flex:0 1 160px">Ziel-Sparquote<select name="ziel">{% for w in [10, 15, 20, 25, 30, 35, 40, 50] %}<option value="{{ w }}" {{ 'selected' if w == (k.ziel_quote * 100)|round|int }}>{{ w }} %</option>{% endfor %}</select></label>
+    <button class="btn" type="submit">Speichern</button></form>
+  {% endif %}
+</section>
+
+{% set ziele = ue.liste|selectattr('r.ziel_cent')|list %}
+{% set toepfe = ue.liste|rejectattr('r.ziel_cent')|list %}
+<section class="karte">
+  <h2>Sparziele</h2>
+  {% if ziele %}
+  <div class="raster">{% for e in ziele %}
+    <a class="ziel karte" href="{{ url_for('sparen.detail', rid=e.r.id) }}" style="color:inherit;text-decoration:none;{{ 'opacity:.55' if not e.r.aktiv }}">
+      <div class="kopf"><b>{{ e.r.name }}</b>
+        <span class="rechts">{% if e.fehlt == 0 %}<span class="tag ok">erreicht</span>{% elif e.im_plan %}<span class="tag ok">im Plan</span>{% elif e.im_plan is sameas false %}<span class="tag warn">hinter Plan</span>{% endif %}</span></div>
+      <div class="fortschritt"><span style="width: {{ (e.fortschritt * 100)|round(1) }}%"></span></div>
+      <div class="kopf"><span class="mono">{{ e.stand|euro_rund }} von {{ e.ziel|euro_rund }}</span><span class="rechts leise">{{ (e.fortschritt * 100)|round|int }} %</span></div>
+      <div class="leise">{% if e.r.zieldatum %}Ziel {{ e.r.zieldatum|monat }}{% endif %}{% if e.rate_noetig %} · nötig {{ e.rate_noetig|euro_rund }}/Monat{% endif %}{% if e.r.zufuehrung_cent %} · geplant {{ e.r.zufuehrung_cent|euro_rund }}/Monat{% endif %}
+        {% if e.erreicht_am %}<br>Voraussichtlich erreicht {{ e.erreicht_am|monat }}{% endif %} · {{ e.r.konto_name }}</div>
+    </a>{% endfor %}</div>
+  {% else %}<p class="leise" style="margin:0">Noch keine Sparziele. Ein Sparziel ist eine Rücklage mit Zielbetrag und optional Zieldatum – unten anlegen.</p>{% endif %}
+</section>
+
+<section class="karte ohne-rand">
+  <div class="kopf"><h2 style="margin:0">Rücklagen</h2><span class="rechts leise">virtuelle Töpfe auf einem Konto</span></div>
+  {% if toepfe %}
+  <div class="scroll"><table class="tab">
+    <thead><tr><th>Rücklage</th><th>Konto</th><th style="text-align:right">Zuführung/Monat</th><th style="text-align:right">Stand</th></tr></thead><tbody>
+    {% for e in toepfe %}<tr style="{{ 'opacity:.55' if not e.r.aktiv }}"><td><a href="{{ url_for('sparen.detail', rid=e.r.id) }}"><b>{{ e.r.name }}</b></a>{% if e.r.kat_pfad %}<div class="leise">für {{ e.r.kat_pfad }}</div>{% endif %}</td>
+      <td class="leise">{{ e.r.konto_name }}{% if e.r.bezug == 'konto' %} (ganzes Konto){% endif %}</td><td class="betrag">{{ e.r.zufuehrung_cent|euro if e.r.zufuehrung_cent else '–' }}</td>
+      <td class="betrag {{ 'pos' if e.stand > 0 }}" style="{{ 'color:var(--bad)' if e.stand < 0 }}">{{ e.stand|euro }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<p class="leer">Noch keine Rücklagen. Typisch: Auto-Reparaturen, Haus-Instandhaltung, Versicherungs-Jahresbeiträge, Urlaub.</p>{% endif %}
+  {% if ue.traeger %}
+  <div style="padding:12px 18px;border-top:1px solid var(--line2)">
+    {% for t in ue.traeger %}<div class="kopf"><span><b>{{ t.konto_name }}</b>: Saldo {{ t.saldo|euro_rund }} · verplant {{ t.verplant|euro_rund }}</span>
+      <span class="rechts">{% if t.frei < 0 %}<span class="tag bad">{{ (-t.frei)|euro_rund }} mehr verplant als vorhanden</span>{% else %}<span class="tag ok">frei verfügbar {{ t.frei|euro_rund }}</span>{% endif %}</span></div>{% endfor %}
+  </div>{% endif %}
+</section>
+
+{% if darf_schreiben %}
+{% call klappe('ruecklage-neu', 'Rücklage oder Sparziel anlegen', offen=not ue.liste) %}
+<form method="post" action="{{ url_for('sparen.neu') }}" class="formreihe">{{ csrf() }}
+  <label class="feld" style="flex:2 1 200px">Name<input type="text" name="name" placeholder="z. B. Neues Auto, Instandhaltung Haus" required></label>
+  <label class="feld">Trägerkonto<select name="traeger_konto_id">{% for kk in konten %}<option value="{{ kk.id }}">{{ kk.name }}</option>{% endfor %}</select></label>
+  <label class="feld">Art<select name="bezug"><option value="topf">Topf auf dem Konto</option><option value="konto">ganzes Konto ist das Ziel</option></select></label>
+  <label class="feld">Zuführung pro Monat<input type="text" name="zufuehrung" inputmode="decimal" placeholder="z. B. 150"></label>
+  <label class="feld">Startbetrag<input type="text" name="startbetrag" inputmode="decimal" placeholder="bereits angespart"></label>
+  <label class="feld">Zielbetrag (Sparziel)<input type="text" name="ziel" inputmode="decimal" placeholder="optional"></label>
+  <label class="feld">Zieldatum<input type="month" name="zieldatum" style="min-height:40px"></label>
+  <label class="feld">Zuführung ab<input type="month" name="start_monat" value="{{ monat }}" style="min-height:40px"></label>
+  <label class="feld" style="flex:2 1 200px">Für Kategorie (optional){{ kat_select('kategorie_id', kategorien) }}</label>
+  <label class="feld">Person{{ person_select('person_id', personen, None, 'gemeinsam') }}</label>
+  <button class="btn primaer" type="submit">Anlegen</button>
+</form>
+<p class="leise" style="margin-bottom:0">Ein Topf ist ein reservierter Teil des Kontostands; die monatliche Zuführung wird automatisch gutgeschrieben (sie sollte der tatsächlichen Überweisung aufs Sparkonto entsprechen). Ausgaben markierst du in der Buchung mit „Bezahlt aus Rücklage“ – dann sinkt der Topf. Mit Zielbetrag wird daraus ein Sparziel.</p>
+{% endcall %}
+{% endif %}
+{% endblock %}

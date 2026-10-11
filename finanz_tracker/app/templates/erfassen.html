@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_suche, person_select with context %}
+{% block titel %}Bar erfassen{% endblock %}
+{% block inhalt %}
+<div class="reihe">
+<form method="post" class="karte breit" style="display:flex;flex-direction:column;gap:14px;max-width:560px">{{ csrf() }}
+  <h1>Schnell erfassen</h1>
+  <input type="hidden" name="richtung" id="richtung" value="aus">
+  <div class="richtung" role="group" aria-label="Richtung">
+    <button type="button" class="an" data-richtung="aus">Ausgabe</button><button type="button" data-richtung="ein">Einnahme</button></div>
+  <label class="feld">Betrag in €<input type="text" name="betrag" inputmode="decimal" class="betrag-eingabe" placeholder="0,00" required autofocus autocomplete="off"></label>
+  <label class="feld">Wofür / bei wem<input type="text" name="gegenpartei" list="haeufig" placeholder="z. B. Bäcker, Taschengeld, Flohmarkt" autocomplete="off">
+    <datalist id="haeufig">{% for h in haeufig %}<option value="{{ h.gegenpartei }}">{% endfor %}</datalist></label>
+  <label class="feld">Kategorie{{ kat_suche('kategorie_id', kategorien, None, 'erf-kat') }}</label>
+  <div class="formreihe">
+    <label class="feld">Konto<select name="konto_id">{% for k in konten %}<option value="{{ k.id }}" {{ 'selected' if k.id == konto_id }}>{{ k.name }}</option>{% endfor %}</select></label>
+    <label class="feld">Datum<input type="date" name="datum" value="{{ heute }}" style="min-height:40px"></label>
+  </div>
+  <div class="formreihe">
+    <label class="feld">Person{{ person_select('person_id', personen, person_id) }}</label>
+    <label class="feld">Tag<input type="text" name="tag" placeholder="optional"></label>
+  </div>
+  <label class="feld">Notiz<input type="text" name="notiz" placeholder="optional"></label>
+  <button class="btn primaer gross" type="submit">Speichern</button>
+  {% if not konten|selectattr('typ', 'equalto', 'bargeld')|list %}<p class="leise" style="margin:0">Tipp: Lege unter Konten ein Konto „Bargeld“ (Typ Bargeld) an. Abhebungen vom Girokonto werden dann als Umbuchung ins Bargeld erkannt, wenn du sie dort als Einnahme erfasst.</p>{% endif %}
+</form>
+<section class="karte schmal">
+  <h2>Zuletzt erfasst</h2>
+  {% for b in letzte %}<a class="katzeile" href="{{ url_for('buchungen.bearbeiten', bid=b.id) }}" style="justify-content:space-between"><span><b>{{ b.gegenpartei or '–' }}</b><span class="leise"> · {{ b.buchungsdatum|datum }} · {{ b.kat_pfad or 'ohne Kategorie' }}</span></span><span class="mono">{{ b.betrag_cent|euro_vz }}</span></a>
+  {% else %}<p class="leise">Noch nichts erfasst.</p>{% endfor %}
+</section>
+</div>
+{% endblock %}

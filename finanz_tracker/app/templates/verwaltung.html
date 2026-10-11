@@ -54,10 +54,24 @@
 <section class="karte">
   <h2>Datensicherung</h2>
   <p>Die Datenbank liegt unter <span class="mono">{{ data_dir }}</span> ({{ (groesse / 1024)|round(1) }} KB) und ist Teil jedes Home-Assistant-Backups des Add-ons.</p>
+  <form method="post" action="{{ url_for('admin.sicherung') }}" class="formreihe">{{ csrf() }}
+    <label class="feld" style="flex:1 1 240px">Passwort für die Sicherung (mind. 8 Zeichen)<input type="password" name="passwort" minlength="8" required autocomplete="new-password"></label>
+    <button class="btn primaer" type="submit">Verschlüsselte Sicherung herunterladen (.ftbak)</button>
+  </form>
+  <p class="leise klein">Verschlüsselt mit AES und einem aus dem Passwort abgeleiteten Schlüssel (scrypt). Ohne das Passwort lässt sich die Datei nicht öffnen – Passwort gut aufbewahren, z. B. im Passwort-Manager.</p>
   <div class="formreihe">
-    <a class="btn primaer" href="{{ url_for('admin.backup') }}">Datenbank herunterladen</a>
+    <a class="btn" href="{{ url_for('admin.backup') }}">Unverschlüsselte Datenbank (.db)</a>
     <a class="btn" href="{{ url_for('buchungen.export', monat='alle') }}">Alle Buchungen als CSV</a>
   </div>
-  <p class="leise klein">Die heruntergeladene Datei ist unverschlüsselt. Sicher aufbewahren; die verschlüsselte Sicherung folgt in einer späteren Version.</p>
+</section>
+
+<section class="karte">
+  <h2>Sicherung wiederherstellen</h2>
+  <form method="post" action="{{ url_for('admin.wiederherstellen') }}" enctype="multipart/form-data" class="formreihe" data-frage="Alle aktuellen Daten werden durch die Sicherung ersetzt. Fortfahren?">{{ csrf() }}
+    <label class="feld" style="flex:1 1 240px">Sicherungsdatei (.ftbak)<input type="file" name="datei" accept=".ftbak" required></label>
+    <label class="feld" style="flex:1 1 200px">Passwort<input type="password" name="passwort" required autocomplete="off"></label>
+    <button class="btn gefahr" type="submit">Wiederherstellen</button>
+  </form>
+  <p class="leise klein">Ersetzt die komplette Datenbank (Buchungen, Benutzer, Einstellungen). Danach ist eine neue Anmeldung nötig. Vorher wird automatisch eine Kopie des aktuellen Stands im Datenordner abgelegt.</p>
 </section>
 {% endblock %}

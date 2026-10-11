@@ -1,0 +1,19 @@
+configuration:
+  https:
+    name: HTTPS
+    description: Encrypted connection. Required for installing the site as an app in Chrome.
+  zertifikat:
+    name: Certificate
+    description: "eigenes: the add-on creates its own home CA (install once on your devices). homeassistant: use certificate from /ssl."
+  zusatz_hostnamen:
+    name: Additional hostnames
+    description: Extra names or IPs for the own certificate, comma separated.
+  certfile:
+    name: Certificate file in /ssl
+  keyfile:
+    name: Key file in /ssl
+  admin_passwort_reset:
+    name: Emergency admin password reset
+    description: Enter a new password (min. 8 chars), restart, then clear again.
+network:
+  8080/tcp: Web interface

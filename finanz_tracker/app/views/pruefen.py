@@ -34,12 +34,16 @@ def index():
               LEFT JOIN kategorie kat ON kat.id = b.kategorie_id WHERE b.id = ?""", (rest[0],))
     vorschlag = None
     if b["kategorie_id"]:
-        vorschlag = {"kategorie_id": b["kategorie_id"], "person_id": b["person_id"], "quelle": b["zuordnung_quelle"]}
+        vorschlag = {"kategorie_id": b["kategorie_id"], "person_id": b["person_id"], "quelle": b["zuordnung_quelle"],
+                     "konfidenz": b["konfidenz"]}
     else:
         gv = zuordnung.gedaechtnis_vorschlag(b)
         if gv:
             vorschlag = {"kategorie_id": gv["kategorie_id"], "person_id": gv["person_id"], "quelle": "gedaechtnis",
                          "anzahl": gv["anzahl"]}
+        elif b["vorschlag_kategorie_id"]:
+            vorschlag = {"kategorie_id": b["vorschlag_kategorie_id"], "person_id": b["person_id"], "quelle": "modell",
+                         "konfidenz": b["konfidenz"]}
     aehnliche = q("""SELECT b.buchungsdatum, b.betrag_cent, kat.pfad AS kat_pfad, p.name AS person_name
                      FROM buchung b LEFT JOIN kategorie kat ON kat.id = b.kategorie_id
                      LEFT JOIN person p ON p.id = b.person_id
@@ -71,8 +75,9 @@ def speichern(bid):
         return redirect(url_for("pruefen.index"))
     person = int_oder_none(request.form.get("person_id"))
     monat = request.form.get("abrechnungsmonat")
+    zuordnung.feedback(b, kat)
     exe("UPDATE buchung SET kategorie_id = ?, person_id = ?, abrechnungsmonat = ?, zuordnung_quelle = 'manuell', "
-        "geprueft = 1, regel_id = NULL WHERE id = ?",
+        "geprueft = 1, regel_id = NULL, vorschlag_kategorie_id = NULL WHERE id = ?",
         (kat, person, monat if ist_monat(monat) else b["abrechnungsmonat"], bid))
     log_aenderung(g.user["id"], "buchung", bid, "geprueft", {"kategorie_id": kat, "person_id": person})
     if request.form.get("regel") and request.form.get("regel_text", "").strip():

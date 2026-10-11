@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, klappe with context %}
+{% block titel %}Tags{% endblock %}
+{% block inhalt %}
+<div class="kopf"><h1>Tags</h1><span class="leise">Querschnitt über Kategorien: Reisen, Projekte, Steuer</span></div>
+<section class="karte ohne-rand">
+  <div class="scroll"><table class="tab">
+    <thead><tr><th>Tag</th><th>Zeitraum</th><th style="text-align:right">Buchungen</th><th style="text-align:right">Ausgaben</th><th style="text-align:right">Budget</th></tr></thead>
+    <tbody>{% for t in tags %}<tr>
+      <td><a href="{{ url_for('tags.detail', tid=t.id) }}"><b>#{{ t.name }}</b></a>{% if t.notiz %}<div class="leise">{{ t.notiz }}</div>{% endif %}</td>
+      <td class="leise">{% if t.start %}{{ t.start|datum }} – {{ (t.ende or t.start)|datum }}{% endif %}</td>
+      <td class="betrag">{{ t.anzahl }}</td><td class="betrag">{{ t.summe|euro }}</td>
+      <td class="betrag">{% if t.budget_cent %}<span style="{{ 'color:var(--bad)' if t.summe > t.budget_cent }}">{{ t.budget_cent|euro_rund }}</span>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="5" class="leer">Noch keine Tags. Tags entstehen auch direkt in einer Buchung oder per Sammelaktion.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% if darf_schreiben %}
+{% call klappe('tag-neu', 'Tag anlegen', offen=not tags) %}
+<form method="post" action="{{ url_for('tags.neu') }}" class="formreihe">{{ csrf() }}
+  <label class="feld" style="flex:2 1 200px">Name<input type="text" name="name" placeholder="z. B. Urlaub Italien 2026 oder Steuer 2026" required></label>
+  <label class="feld">von<input type="date" name="start" style="min-height:40px"></label>
+  <label class="feld">bis<input type="date" name="ende" style="min-height:40px"></label>
+  <label class="feld">Budget<input type="text" name="budget" inputmode="decimal" placeholder="optional"></label>
+  <button class="btn primaer" type="submit">Anlegen</button>
+</form>
+<p class="leise" style="margin-bottom:0">Mit Zeitraum (z. B. Urlaub) schlägt das Tool alle Ausgaben in diesem Zeitraum zum Markieren vor. Für die Steuererklärung: Tag „Steuer 2026“ vergeben und auf der Tag-Seite als CSV exportieren.</p>
+{% endcall %}
+{% endif %}
+{% endblock %}

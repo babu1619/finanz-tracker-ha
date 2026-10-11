@@ -31,4 +31,16 @@
     {% endfor %}
     </tbody></table></div>
 </section>
+
+<section class="karte">
+  <h2>Trefferquote der Automatik <span class="leise">(letzte 6 Monate)</span></h2>
+  {% if quoten %}
+  <div class="kpis">{% for qq in quoten %}
+    <div class="kpi"><div class="label">{{ qq.quelle }}</div><div class="wert">{{ (qq.quote * 100)|round|int }} %</div>
+      <div class="unter">{{ qq.n }} Zuordnungen bewertet</div></div>{% endfor %}</div>
+  <p class="leise" style="margin-bottom:0">Regeln gelten als richtig, solange niemand ihre Zuordnung ändert. Bei früheren Buchungen und dem
+    Lernmodell zählt, ob die Kategorie im Prüf-Modus bestätigt oder geändert wurde. Das Lernmodell setzt eine Kategorie
+    erst ab 85 % Sicherheit selbst (als „ungeprüft“), darunter macht es nur einen Vorschlag.</p>
+  {% else %}<p class="leise" style="margin:0">Noch keine Daten. Die Quote entsteht, sobald automatisch zugeordnete Buchungen geprüft werden.</p>{% endif %}
+</section>
 {% endblock %}

@@ -30,6 +30,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         PERMANENT_SESSION_LIFETIME=timedelta(days=config.SITZUNG_TAGE),
         MAX_CONTENT_LENGTH=20 * 1024 * 1024,
+        SESSION_COOKIE_SECURE=config.HTTPS,
     )
     if test_config:
         app.config.update(test_config)
@@ -65,6 +66,7 @@ def create_app(test_config: dict | None = None) -> Flask:
             "darf_schreiben": auth.darf_schreiben(),
             "version": config.VERSION,
             "offen": offen,
+            "https": config.HTTPS,
         }
 
     app.jinja_env.filters.update(
@@ -76,9 +78,11 @@ def create_app(test_config: dict | None = None) -> Flask:
         monat_kurz=util.monat_kurz,
     )
 
-    from .views import auth_views, dashboard, buchungen, pruefen, kategorien, regeln, konten, importe, admin
+    from .views import (auth_views, dashboard, buchungen, pruefen, kategorien, regeln, konten, importe, admin,
+                        budgets, sparen, darlehen, auswertung, tags, vertraege, erfassen, pwa)
     for bp in (auth_views.bp, dashboard.bp, buchungen.bp, pruefen.bp, kategorien.bp, regeln.bp,
-               konten.bp, importe.bp, admin.bp):
+               konten.bp, importe.bp, admin.bp, budgets.bp, sparen.bp, darlehen.bp, auswertung.bp, tags.bp,
+               vertraege.bp, erfassen.bp, pwa.bp):
         app.register_blueprint(bp)
 
     @app.errorhandler(400)

@@ -1,0 +1,75 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, klappe with context %}
+{% block titel %}{{ d.name }}{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('darlehen.index') }}">‹ Darlehen</a>
+  {% if darf_schreiben %}<div class="rechts"><a class="btn" href="{{ url_for('darlehen.konditionen', kid=d.konto_id) }}">Konditionen ändern</a></div>{% endif %}</div>
+
+<div class="kopf"><h1>{{ d.name }}</h1><span class="leise">{{ d.institut or '' }}{% if d.immobilie_name %} · {{ d.immobilie_name }}{% endif %}</span></div>
+{% if k.fehler %}<div class="flash bad">{{ k.fehler }} Bitte Rate und Sollzins prüfen.</div>{% endif %}
+{% if k.zinsbindung_warnung %}<div class="flash warn">Die Zinsbindung endet {{ d.zinsbindung_bis|monat }} (in {{ k.monate_bis_zinsbindung }} Monaten). Restschuld dann laut Plan {{ k.rest_zinsbindung|euro_rund }} – Zeit für Angebote zur Anschlussfinanzierung (Forward-Darlehen).</div>{% endif %}
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Restschuld laut Plan</div><div class="wert">{{ k.restschuld|euro_rund }}</div>
+    <div class="unter">{% if hat_buchungen %}laut Kontoauszug {{ (-konto_saldo)|euro_rund }}{% elif k.letzter_abgleich %}Abgleich vom {{ k.letzter_abgleich.datum|datum }}{% else %}aus den Konditionen berechnet{% endif %}</div></div>
+  <div class="kpi"><div class="label">Sollzins · Rate</div><div class="wert">{{ ('%.2f'|format(d.sollzins)).replace('.', ',') }} %</div><div class="unter">Rate {{ d.rate_cent|euro }}</div></div>
+  <div class="kpi"><div class="label">Zinsbindung</div><div class="wert">{{ d.zinsbindung_bis|monat if d.zinsbindung_bis else '–' }}</div>
+    <div class="unter">{% if d.zinsbindung_bis %}Rest dann {{ k.rest_zinsbindung|euro_rund }} · Zinsen bis dahin {{ k.zinsen_bis_zinsbindung|euro_rund }}{% endif %}</div></div>
+  <div class="kpi"><div class="label">Schuldenfrei</div><div class="wert">{{ k.ende|monat_kurz if k.ende else '–' }}</div><div class="unter">bei gleichem Zins · noch {{ k.gesamt_zins|euro_rund }} Zinsen</div></div>
+</div>
+
+<section class="karte">
+  <h2>Sondertilgung simulieren</h2>
+  <form method="get" class="formreihe">
+    <label class="feld" style="flex:0 1 200px">Betrag<input type="text" name="sim_betrag" inputmode="decimal" value="{{ a.sim_betrag or '' }}" placeholder="z. B. 5.000" required></label>
+    <label class="feld" style="flex:0 1 180px">Im Monat<input type="month" name="sim_monat" value="{{ a.sim_monat or monat }}" style="min-height:40px"></label>
+    <label class="check" style="flex:0 1 auto"><input type="checkbox" name="sim_jaehrlich" value="1" {{ 'checked' if a.sim_jaehrlich }}> jedes Jahr wiederholen</label>
+    <button class="btn primaer" type="submit">Berechnen</button>
+  </form>
+  {% if k.rahmen.rahmen %}<p class="leise">Vertraglicher Rahmen: {{ ('%g'|format(d.sondertilgung_prozent)).replace('.', ',') }} % = {{ k.rahmen.rahmen|euro_rund }} pro Jahr, {{ k.rahmen.genutzt|euro_rund }} genutzt, {{ k.rahmen.frei|euro_rund }} frei.</p>{% endif %}
+  {% if sim %}
+  {% if sim.ueber_rahmen %}<div class="flash warn">Der Betrag übersteigt den freien Sondertilgungsrahmen ({{ sim.rahmen.frei|euro_rund }}) – mit der Bank klären.</div>{% endif %}
+  <div class="scroll"><table class="tab vergleich" style="margin-top:8px">
+    <thead><tr><th style="padding-left:0"></th><th style="text-align:right">ohne</th><th style="text-align:right">mit Sondertilgung</th><th style="text-align:right">Unterschied</th></tr></thead>
+    <tbody>
+      <tr><td style="padding-left:0">Zinsen ab {{ sim.monat|monat_kurz }}</td><td class="betrag">{{ sim.zins_basis|euro_rund }}</td><td class="betrag">{{ sim.zins_mit|euro_rund }}</td><td class="betrag best pos">−{{ sim.ersparnis|euro_rund }}</td></tr>
+      {% if sim.zins_zb_basis is not none %}<tr><td style="padding-left:0">Zinsen bis Zinsbindungsende</td><td class="betrag">{{ sim.zins_zb_basis|euro_rund }}</td><td class="betrag">{{ sim.zins_zb_mit|euro_rund }}</td><td class="betrag best pos">−{{ sim.ersparnis_zb|euro_rund }}</td></tr>
+      <tr><td style="padding-left:0">Restschuld bei Zinsbindungsende</td><td class="betrag">{{ sim.rest_zb_basis|euro_rund }}</td><td class="betrag">{{ sim.rest_zb_mit|euro_rund }}</td><td class="betrag">−{{ (sim.rest_zb_basis - sim.rest_zb_mit)|euro_rund }}</td></tr>{% endif %}
+      <tr><td style="padding-left:0">Schuldenfrei</td><td class="betrag">{{ sim.ende_basis|monat_kurz }}</td><td class="betrag">{{ sim.ende_mit|monat_kurz }}</td><td class="betrag best">{{ sim.verkuerzung_monate // 12 }} J. {{ sim.verkuerzung_monate % 12 }} M. früher</td></tr>
+      <tr><td style="padding-left:0">Eingesetzt</td><td></td><td class="betrag">{{ sim.eingesetzt|euro_rund }}</td><td class="leise" style="text-align:right">„Rendite“ = Sollzins {{ ('%.2f'|format(sim.rendite)).replace('.', ',') }} %</td></tr>
+    </tbody></table></div>
+  <p class="leise" style="margin-bottom:0">Annahme: Nach Ende der Zinsbindung gilt derselbe Zins weiter. Die Werte bis zum Zinsbindungsende sind daher die verlässlicheren.</p>
+  {% endif %}
+</section>
+
+<div class="reihe">
+  <section class="karte breit ohne-rand">
+    <div class="kopf"><h2 style="margin:0">Tilgungsplan je Jahr</h2></div>
+    <div class="scroll"><table class="tab">
+      <thead><tr><th>Jahr</th><th style="text-align:right">Zinsen</th><th style="text-align:right">Tilgung</th><th style="text-align:right">Sondertilgung</th><th style="text-align:right">Restschuld Jahresende</th></tr></thead>
+      <tbody>{% for j, w in jahre.items() %}<tr style="{{ 'background:var(--accent-soft)' if j == monat[:4] }}{{ ';border-top:2px solid #C98A12' if d.zinsbindung_bis and j == d.zinsbindung_bis[:4] }}">
+        <td class="mono">{{ j }}{% if d.zinsbindung_bis and j == d.zinsbindung_bis[:4] %} <span class="tag warn">Zinsbindung</span>{% endif %}</td>
+        <td class="betrag">{{ w.zins|euro_rund }}</td><td class="betrag">{{ w.tilgung|euro_rund }}</td><td class="betrag">{{ w.sonder|euro_rund if w.sonder else '' }}</td><td class="betrag">{{ w.rest|euro_rund }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+
+  <section class="karte schmal">
+    <h2>Sondertilgungen und Abgleiche</h2>
+    {% for e in k.ereignisse %}
+    <div class="kopf" style="padding:6px 0;border-bottom:1px solid var(--line2)"><span class="mono">{{ e.datum|datum }}</span>
+      <span>{{ 'Sondertilgung' if e.art == 'sondertilgung' else 'Restschuld laut Bank' }}</span><b class="rechts mono">{{ e.betrag_cent|euro }}</b>
+      {% if darf_schreiben %}<form method="post" action="{{ url_for('darlehen.ereignis', kid=d.konto_id) }}">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen"><input type="hidden" name="eid" value="{{ e.id }}"><button class="btn klein" type="submit" aria-label="entfernen">✕</button></form>{% endif %}</div>
+    {% else %}<p class="leise">Noch keine Einträge.</p>{% endfor %}
+    {% if darf_schreiben %}
+    <form method="post" action="{{ url_for('darlehen.ereignis', kid=d.konto_id) }}" style="display:flex;flex-direction:column;gap:10px;margin-top:12px">{{ csrf() }}
+      <div class="formreihe">
+        <label class="feld">Art<select name="art"><option value="sondertilgung">Sondertilgung geleistet</option><option value="abgleich">Restschuld laut Bank</option></select></label>
+        <label class="feld">Datum<input type="date" name="datum" required style="min-height:40px"></label>
+      </div>
+      <label class="feld">Betrag<input type="text" name="betrag" inputmode="decimal" required></label>
+      <button class="btn primaer" type="submit">Eintragen</button>
+      <p class="leise" style="margin:0">Mit „Restschuld laut Bank“ (z. B. aus dem Jahreskontoauszug) korrigierst du Rundungsabweichungen des Plans.</p>
+    </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

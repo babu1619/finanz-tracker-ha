@@ -36,9 +36,22 @@ def notfall_passwort():
 
 
 def main():
+    from . import tls
+    try:
+        zert = tls.bereite_vor()
+    except Exception:  # noqa: BLE001 – lieber per HTTP erreichbar bleiben als gar nicht starten
+        logging.exception("HTTPS konnte nicht eingerichtet werden – starte ohne HTTPS")
+        zert = None
+    config.HTTPS = zert is not None
     app = create_app()
     notfall_passwort()
-    logging.info("Finanz-Tracker %s startet auf Port %s, Daten in %s", config.VERSION, config.PORT, config.DATA_DIR)
+    if zert:
+        from .server import starte_https
+        logging.info("Finanz-Tracker %s startet mit HTTPS (%s-Zertifikat) auf Port %s, Daten in %s",
+                     config.VERSION, zert["quelle"], config.PORT, config.DATA_DIR)
+        starte_https(app, "0.0.0.0", config.PORT, tls.ssl_kontext(zert))
+        return
+    logging.info("Finanz-Tracker %s startet ohne HTTPS auf Port %s, Daten in %s", config.VERSION, config.PORT, config.DATA_DIR)
     try:
         from waitress import serve
     except ImportError:  # Entwicklung ohne waitress

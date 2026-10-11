@@ -6,6 +6,7 @@
   font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--ink); font-size: 15px; line-height: 1.45; }
 a { color: var(--accent); } a:hover { color: var(--accent-dark); }
 .mono, .betrag { font-family: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace; }
@@ -131,7 +132,82 @@ button[disabled], .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .auth .karte { display: flex; flex-direction: column; gap: 14px; }
 footer.fuss { text-align: center; font-size: 12px; color: var(--quiet); padding: 0 0 24px; }
 
+.buchungstab { min-width: 860px; }
+.tabfuss { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding: 10px 18px; background: #F7F8F6; border-top: 2px solid var(--line); font-size: 13px; }
+.tabfuss .betrag { white-space: normal; }
+.nur-handy { display: none; }
+
+/* Einklappbare Bereiche */
+details.klappe { padding: 0; }
+details.klappe > summary { list-style: none; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 48px; padding: 10px 20px; cursor: pointer; user-select: none; }
+details.klappe > summary::-webkit-details-marker { display: none; }
+details.klappe > summary::before { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--ink2); border-bottom: 2px solid var(--ink2); transform: rotate(-45deg); transition: transform .15s; margin-right: 4px; }
+details.klappe[open] > summary::before { transform: rotate(45deg); }
+details.klappe > summary .klappe-titel { font-weight: 600; font-size: 15px; }
+details.klappe > .klappe-inhalt { padding: 0 20px 16px; }
+details.klappe > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 10px; }
+
+/* Aufteilung */
+.split-editor { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.split-zeile { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; padding-bottom: 10px; border-bottom: 1px dashed var(--line); }
+.split-zeile > label.feld { flex: 1 1 110px; }
+.split-zeile select { width: 100%; }
+.splitzeile { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--ink2); margin-top: 2px; }
+
+/* Navigation „Mehr“ */
+header.top nav details.mehr { position: relative; }
+header.top nav details.mehr > summary { list-style: none; padding: 9px 12px; border-radius: 6px; color: #C9D3CF; cursor: pointer; }
+header.top nav details.mehr > summary::-webkit-details-marker { display: none; }
+header.top nav details.mehr[open] > summary, header.top nav details.mehr.aktiv > summary { background: var(--head2); color: #fff; }
+header.top nav details.mehr .menue { position: absolute; z-index: 20; top: 100%; left: 0; min-width: 210px; margin-top: 4px; padding: 6px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.12); display: flex; flex-direction: column; }
+header.top nav details.mehr .menue a { color: var(--ink); padding: 10px 12px; }
+header.top nav details.mehr .menue a.aktiv { background: var(--accent-soft); color: var(--accent-dark); }
+header.top .plus { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 12px; border-radius: 6px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }
+
+/* Fortschritt, Budgets, Darlehen */
+.fortschritt { position: relative; height: 12px; background: #E7EBE8; border-radius: 6px; overflow: hidden; }
+.fortschritt > span { display: block; height: 100%; background: var(--accent); border-radius: 6px; }
+.fortschritt > span.warn { background: #C98A12; } .fortschritt > span.ueber { background: var(--bad); }
+.fortschritt > i { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); opacity: .55; }
+.fortschritt > span.prognose { position: absolute; top: 0; left: 0; background: repeating-linear-gradient(45deg, rgba(15,107,92,.25) 0 4px, transparent 4px 8px); }
+.budgetzeile { display: grid; grid-template-columns: minmax(130px, 1.3fr) 2fr auto; gap: 6px 14px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line2); }
+.budgetzeile:last-child { border-bottom: none; }
+.budgetzeile .zahlen { text-align: right; font-family: "IBM Plex Mono", monospace; font-size: 13px; white-space: nowrap; }
+.budgetzeile.unter .bname { padding-left: 18px; }
+.raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.ziel { display: flex; flex-direction: column; gap: 8px; }
+.balkenreihe { display: flex; align-items: flex-end; gap: 2px; height: 120px; border-bottom: 1px solid #C9D1CD; }
+.balkenreihe > span { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-width: 2px; }
+.balkenreihe > span.zb { background: #C98A12; }
+.mini { display: inline-flex; align-items: flex-end; gap: 1px; height: 22px; vertical-align: middle; }
+.mini > span { width: 5px; background: var(--accent); opacity: .75; border-radius: 1px; }
+.vergleich td.best { background: var(--accent-soft); }
+.richtung { display: flex; gap: 0; }
+.richtung button { flex: 1; min-height: 48px; border: 1px solid #C9D1CD; background: #fff; font: inherit; font-size: 15px; cursor: pointer; }
+.richtung button:first-child { border-radius: 8px 0 0 8px; } .richtung button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
+.richtung button.an { background: var(--ink); color: #fff; border-color: var(--ink); }
+.betrag-eingabe { font-family: "IBM Plex Mono", monospace; font-size: 28px !important; min-height: 60px !important; text-align: right; }
+
 @media (max-width: 720px) {
+  .buchungstab { min-width: 0; width: 100%; }
+  .buchungstab th.sp-check { width: 34px; } .buchungstab th.sp-datum { width: 52px; } .buchungstab thead th:last-child { width: 92px; }
+  .buchungstab td { overflow-wrap: break-word; }
+  .buchungstab td:not(.mono):not(.betrag) { min-width: 0; word-break: break-word; }
+  .buchungstab .sp-neben { display: none; }
+  .buchungstab .nur-handy { display: block; white-space: normal; font-family: inherit; }
+  .buchungstab .nur-desk { display: none; }
+  .buchungstab span.nur-handy { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  .buchungstab td, .buchungstab th { padding-left: 5px; padding-right: 5px; font-size: 13px; }
+  .buchungstab td.betrag { font-size: 13px; }
+  .buchungstab .mono { font-size: 12px !important; }
+  table.tab.buchungstab th { white-space: normal; }
+  .buchungstab td:first-child, .buchungstab th:first-child { padding-left: 12px; }
+  .budgetzeile { grid-template-columns: 1fr auto; }
+  .budgetzeile .fortschritt { grid-column: 1 / -1; order: 3; }
+  header.top nav details.mehr { position: static; }
+  header.top nav details.mehr .menue { position: fixed; top: auto; left: 14px; right: 14px; }
+  details.klappe > summary { padding: 10px 14px; }
+  details.klappe > .klappe-inhalt { padding: 0 14px 14px; }
   header.top { padding: 10px 14px; }
   header.top .wer { margin-left: 0; }
   main { padding: 16px 14px 40px; }

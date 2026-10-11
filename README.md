@@ -36,14 +36,14 @@ Alternativ mit Git:
 cd finanz-tracker
 git init && git add . && git commit -m "Finanz-Tracker 0.1.0"
 git branch -M main
-git remote add origin https://github.com/DEIN-GITHUB-NAME/finanz-tracker.git
+git remote add origin https://github.com/babu1619/finanz-tracker.git
 git push -u origin main
 ```
-Optional: In `repository.yaml` und `finanz_tracker/config.yaml` `DEIN-GITHUB-NAME` durch deinen GitHub-Namen ersetzen
+Optional: In `repository.yaml` und `finanz_tracker/config.yaml` `babu1619` durch deinen GitHub-Namen ersetzen
 (nur ein Link in der Anzeige, für die Funktion nicht nötig).
 
 **4. Repository in Home Assistant eintragen.** Einstellungen › Add-ons › „Add-on Store“ › Menü ⋮ oben rechts ›
-„Repositories“ › `https://github.com/DEIN-GITHUB-NAME/finanz-tracker` › „Hinzufügen“ › Schließen.
+„Repositories“ › `https://github.com/babu1619/finanz-tracker` › „Hinzufügen“ › Schließen.
 
 **5. Add-on installieren.** Seite neu laden (ggf. Menü ⋮ › „Nach Updates suchen“). Unten erscheint der Abschnitt
 „Finanz-Tracker“ › Add-on öffnen › „Installieren“. Das Add-on wird auf dem Green gebaut; das dauert beim ersten Mal

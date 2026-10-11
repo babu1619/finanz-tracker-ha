@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block titel %}Auswertung{% endblock %}
+{% macro link(kategorie=None, art_=None) -%}
+{{ url_for('auswertung.index', zeitraum=zeitraum, bis=bis if zeitraum != 'jahr' else None, jahr=jahr, person=person_id, kategorie=kategorie, art=art_) }}
+{%- endmacro %}
+{% block inhalt %}
+<div class="kopf"><h1>Auswertung</h1>
+  <span class="leise">{{ von|monat }} bis {{ bis|monat }}{% if person %} · {{ person.name }}{% endif %}</span></div>
+
+<form method="get" class="karte formreihe">
+  {% if kat %}<input type="hidden" name="kategorie" value="{{ kat.id }}">{% else %}<input type="hidden" name="art" value="{{ art }}">{% endif %}
+  <label class="feld">Zeitraum<select name="zeitraum">{% for k, t in zeitraeume.items() %}<option value="{{ k }}" {{ 'selected' if k == zeitraum }}>{{ t }}</option>{% endfor %}</select></label>
+  {% if zeitraum == 'jahr' %}<label class="feld">Jahr<select name="jahr">{% for j in jahre %}<option value="{{ j }}" {{ 'selected' if j|int == jahr }}>{{ j }}</option>{% endfor %}</select></label>
+  {% else %}<label class="feld">bis<input type="month" name="bis" value="{{ bis }}" style="min-height:40px"></label>{% endif %}
+  <label class="feld">Person<select name="person"><option value="">alle</option>{% for p in personen %}<option value="{{ p.id }}" {{ 'selected' if person_id == p.id }}>{{ p.name }}</option>{% endfor %}</select></label>
+  <button class="btn primaer" type="submit">Anzeigen</button>
+</form>
+
+<div class="kopf">
+  <nav class="chips" aria-label="Kategoriepfad">
+    <a href="{{ link(None, 'ausgabe') }}" class="{{ 'an' if not kat and art == 'ausgabe' }}">Ausgaben</a>
+    <a href="{{ link(None, 'einnahme') }}" class="{{ 'an' if not kat and art == 'einnahme' }}">Einnahmen</a>
+    {% for p in pfad %}<a href="{{ link(p.id) }}" class="{{ 'an' if loop.last }}">› {{ p.name }}</a>{% endfor %}
+  </nav>
+  {% if kat %}<a class="rechts btn" href="{{ url_for('buchungen.liste', kategorie=kat.id, monat='alle', person=person_id or '') }}">Buchungen ansehen</a>{% endif %}
+</div>
+
+<section class="karte">
+  <div class="kopf"><h2 style="margin:0">{{ kat.pfad if kat else ('Ausgaben' if art == 'ausgabe' else 'Einnahmen') }} je Monat</h2>
+    <span class="rechts mono">Summe {{ gesamt_summe|euro_rund }} · Ø {{ (gesamt_summe / monate|length)|euro_rund }}/Monat</span></div>
+  <div class="scroll" style="margin-top:12px"><div style="min-width:{{ [monate|length * 34, 360]|max }}px">
+    <div class="balkenreihe" style="gap:6px;height:150px">{% for m in monate %}<span title="{{ m|monat }}: {{ gesamt[m]|euro_rund }}" style="height: {{ ([gesamt[m], 0]|max / max_gesamt * 100)|round(1) }}%"></span>{% endfor %}</div>
+    <div class="verlauf-lbl" style="min-width:0;gap:6px">{% for m in monate %}<span>{{ m|monat_kurz }}</span>{% endfor %}</div>
+  </div></div>
+</section>
+
+<section class="karte ohne-rand">
+  <div class="kopf"><h2 style="margin:0">{{ 'Unterkategorien' if kat else 'Kategorien' }}</h2><span class="rechts leise">Klick öffnet die nächste Ebene</span></div>
+  <div class="scroll"><table class="tab" style="min-width:640px">
+    <thead><tr><th>Kategorie</th><th>Verlauf</th><th style="text-align:right">Summe</th><th style="text-align:right">Ø/Monat</th><th style="text-align:right">Anteil</th><th style="text-align:right">Vorjahr</th></tr></thead>
+    <tbody>{% for z in zeilen %}<tr>
+      <td>{% if z.id and z.id != 'ohne' and z.hat_kinder %}<a href="{{ link(z.id) }}"><b>{{ z.name }}</b> ›</a>
+          {% elif z.id and z.id != 'ohne' %}<a href="{{ url_for('buchungen.liste', kategorie=z.id, monat='alle', person=person_id or '') }}">{{ z.name }}</a>
+          {% elif z.id == 'ohne' %}<a href="{{ url_for('buchungen.liste', kategorie='ohne', monat='alle') }}">{{ z.name }}</a>{% else %}{{ z.name }}{% endif %}</td>
+      <td><span class="mini" aria-hidden="true">{% for m in monate %}<span style="height: {{ ([z.werte.get(m, 0), 0]|max / z.max * 100)|round|int }}%"></span>{% endfor %}</span></td>
+      <td class="betrag">{{ z.summe|euro_rund }}</td><td class="betrag leise">{{ z.schnitt|round|int|euro_rund }}</td>
+      <td class="betrag leise">{{ (z.summe / gesamt_summe * 100)|round|int if gesamt_summe else 0 }} %</td>
+      <td class="betrag leise">{% if z.vorjahr %}{% set d = ((z.summe - z.vorjahr) / z.vorjahr * 100)|round|int %}<span style="color: {{ ('#8A1F18' if d > 0 else '#0A4D42') if art == 'ausgabe' else ('#0A4D42' if d > 0 else '#8A1F18') }}">{{ '+' if d > 0 }}{{ d if d < 500 else '>500' }} %</span>{% else %}–{% endif %}</td></tr>
+    {% else %}<tr><td colspan="6" class="leer">Keine Daten im Zeitraum.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+<div class="reihe">
+  {% if gegenparteien %}
+  <section class="karte breit ohne-rand">
+    <div class="kopf"><h2 style="margin:0">Größte Empfänger</h2></div>
+    <table class="tab"><tbody>{% for g in gegenparteien %}<tr><td>{{ g.gegenpartei or '–' }}<div class="leise">{{ g.anzahl }} Buchungen</div></td><td class="betrag">{{ g.summe|euro_rund }}</td></tr>{% endfor %}</tbody></table>
+  </section>
+  {% endif %}
+  {% if personen_liste %}
+  <section class="karte schmal ohne-rand">
+    <div class="kopf"><h2 style="margin:0">Ausgaben je Person</h2></div>
+    <table class="tab"><tbody>{% for p in personen_liste %}<tr><td>{% if p.id %}<a href="{{ url_for('auswertung.index', zeitraum=zeitraum, bis=bis, jahr=jahr, person=p.id) }}">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}</td><td class="betrag">{{ p.betrag|euro_rund }}</td></tr>{% endfor %}</tbody></table>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

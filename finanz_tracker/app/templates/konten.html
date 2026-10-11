@@ -13,7 +13,7 @@
     {% for r in rows %}
       <tr style="{{ 'opacity:.55' if not r.k.aktiv }}">
         <td><b>{{ r.k.name }}</b>{% if r.k.iban %}<div class="leise mono klein">{{ r.k.iban }}</div>{% endif %}</td>
-        <td>{{ typen[r.k.typ] }}</td>
+        <td>{{ typen[r.k.typ] }}{% if r.k.typ == 'darlehen' %}<br><a class="klein" href="{{ url_for('darlehen.detail', kid=r.k.id) }}">Plan &amp; Simulation</a>{% endif %}</td>
         <td>{% if r.k.profil_name %}{{ r.k.profil_name }}{% else %}<span class="tag warn">keins</span>{% endif %}</td>
         <td class="leise">{{ 'alle' if r.k.sichtbarkeit == 'alle' else 'nur ' ~ (r.k.eigentuemer or 'Eigentümer') }}</td>
         <td class="leise">{{ r.letzter.zeitpunkt|datum if r.letzter else 'noch nie' }}{% if r.letzter and r.letzter.saldo_differenz_cent %} <span class="tag bad">Saldo weicht ab</span>{% endif %}</td>

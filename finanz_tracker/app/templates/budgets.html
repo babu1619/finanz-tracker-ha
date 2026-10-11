@@ -1,0 +1,77 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_select, person_select, klappe with context %}
+{% block titel %}Budgets{% endblock %}
+{% block inhalt %}
+<div class="kopf">
+  <h1>Budgets</h1>
+  <div class="monatwahl">
+    <a href="?monat={{ vor }}" aria-label="Vormonat">‹</a>
+    <div class="mt"><span class="leise">Abrechnungsmonat</span><b>{{ monat|monat }}</b></div>
+    <a href="?monat={{ nach }}" aria-label="Folgemonat">›</a>
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Budget gesamt (Monat)</div><div class="wert">{{ ue.summe.soll|euro_rund }}</div><div class="unter">nur oberste Budgets, ohne Doppelzählung</div></div>
+  <div class="kpi"><div class="label">Ausgegeben</div><div class="wert">{{ ue.summe.ist|euro_rund }}</div>
+    <div class="unter">{% if ue.summe.soll %}{{ (ue.summe.ist / ue.summe.soll * 100)|round|int }} % verbraucht{% endif %}{% if ue.laufend %} · {{ (ue.anteil_zeit * 100)|round|int }} % des Monats vorbei{% endif %}</div></div>
+  {% if ue.laufend %}<div class="kpi"><div class="label">Prognose Monatsende</div><div class="wert {{ 'pos' if ue.summe.prognose <= ue.summe.soll }}">{{ ue.summe.prognose|euro_rund }}</div>
+    <div class="unter">{% if ue.summe.prognose > ue.summe.soll %}{{ (ue.summe.prognose - ue.summe.soll)|euro_rund }} über Budget{% else %}{{ (ue.summe.soll - ue.summe.prognose)|euro_rund }} Luft{% endif %}</div></div>{% endif %}
+</div>
+
+<section class="karte">
+  <div class="kopf"><h2 style="margin:0">Budgets im {{ monat|monat }}</h2>
+    <div class="legende rechts"><span><i style="background:var(--accent)"></i>ausgegeben</span>{% if ue.laufend %}<span><i style="background:repeating-linear-gradient(45deg, rgba(15,107,92,.35) 0 3px, transparent 3px 6px)"></i>Prognose</span><span><i style="background:var(--ink);width:2px"></i>Zeitanteil</span>{% endif %}</div></div>
+  {% for z in ue.zeilen %}
+  <div class="budgetzeile {{ 'unter' if z.unterbudget }}">
+    <div class="bname"><a href="{{ url_for('buchungen.liste', monat=monat, kategorie=z.k.id, person=z.b.person_id or '') }}" style="color:inherit;text-decoration:none"><b>{{ z.k.name }}</b></a>
+      <div class="leise">{{ z.k.pfad if z.k.ebene else '' }}{% if z.b.person_name %} · {{ z.b.person_name }}{% endif %}{% if z.b.rhythmus == 'jahr' %} · Jahresbudget{% endif %}{% if z.uebertrag %} · Übertrag {{ z.uebertrag|euro_rund }}{% endif %}</div></div>
+    <div class="fortschritt" title="{{ (z.quote * 100)|round|int }} %">
+      {% if z.prognose is not none and z.soll > 0 %}<span class="prognose" style="width: {{ [z.prognose / z.soll * 100, 100]|min }}%"></span>{% endif %}
+      <span class="{{ z.status if z.status != 'ok' }}" style="position:relative;width: {{ [z.quote * 100, 100]|min }}%"></span>
+      {% if z.anteil_zeit < 1 %}<i style="left: {{ (z.anteil_zeit * 100)|round(1) }}%"></i>{% endif %}
+    </div>
+    <div class="zahlen">{{ z.ist|euro_rund }} / {{ z.soll|euro_rund }}
+      <div class="leise">{% if z.status == 'ueber' %}<span style="color:var(--bad)">{{ (-z.rest)|euro_rund }} drüber</span>{% else %}{{ z.rest|euro_rund }} übrig{% endif %}{% if z.prognose is not none %} · Prognose {{ z.prognose|euro_rund }}{% endif %}
+      {% if darf_schreiben %} · <a href="{{ url_for('budgets.bearbeiten', bid=z.b.id) }}">ändern</a>{% endif %}</div></div>
+  </div>
+  {% else %}
+  <p class="leer">Noch keine Budgets. Unten anlegen oder Vorschläge aus den letzten 6 Monaten übernehmen.</p>
+  {% endfor %}
+</section>
+
+{% if ue.offen_fix %}
+<section class="karte">
+  <h2>Noch erwartet in diesem Monat</h2>
+  <table class="tab"><tbody>{% for v in ue.offen_fix %}
+    <tr><td style="padding-left:0"><b>{{ v.name }}</b><div class="leise">{{ v.kat_pfad or 'ohne Kategorie' }} · {{ v.rhythmus }}</div></td>
+      <td class="leise">um den {{ v.naechste|datum }}</td><td class="betrag" style="padding-right:0">{{ (-v.betrag)|euro }}</td></tr>{% endfor %}</tbody></table>
+  <p class="leise" style="margin-bottom:0">Aus erkannten wiederkehrenden Zahlungen; fließt in die Prognose ein. Verwalten unter <a href="{{ url_for('vertraege.index') }}">Abos &amp; Verträge</a>.</p>
+</section>
+{% endif %}
+
+{% if darf_schreiben %}
+{% if vorschlaege %}
+{% call klappe('budget-vorschlaege', 'Vorschläge aus den letzten 6 Monaten', zusatz=vorschlaege|length ~ ' Kategorien ohne Budget') %}
+<form method="post" action="{{ url_for('budgets.vorschlaege_uebernehmen') }}">{{ csrf() }}<input type="hidden" name="monat" value="{{ monat }}">
+  <table class="tab"><thead><tr><th style="padding-left:0"></th><th>Kategorie</th><th style="text-align:right">Ø pro Monat (aufgerundet)</th></tr></thead><tbody>
+  {% for v in vorschlaege %}<tr><td style="padding-left:0;width:30px"><input type="checkbox" name="kat" value="{{ v.k.id }}" checked aria-label="übernehmen"></td><td>{{ v.k.pfad }}</td><td class="betrag">{{ v.vorschlag|euro_rund }}</td></tr>{% endfor %}
+  </tbody></table>
+  <button class="btn primaer" type="submit" style="margin-top:10px">Ausgewählte als Monatsbudget anlegen</button>
+</form>
+{% endcall %}
+{% endif %}
+
+{% call klappe('budget-neu', 'Budget anlegen', offen=not ue.zeilen) %}
+<form method="post" action="{{ url_for('budgets.neu') }}" class="formreihe">{{ csrf() }}<input type="hidden" name="monat" value="{{ monat }}">
+  <label class="feld" style="flex:2 1 220px">Kategorie (inkl. Unterkategorien){{ kat_select('kategorie_id', kategorien, None, '– wählen –') }}</label>
+  <label class="feld">Betrag<input type="text" name="betrag" inputmode="decimal" placeholder="z. B. 650" required></label>
+  <label class="feld">Rhythmus<select name="rhythmus"><option value="monat">pro Monat</option><option value="jahr">pro Jahr</option></select></label>
+  <label class="feld">Person{{ person_select('person_id', personen, None, 'alle / gemeinsam') }}</label>
+  <label class="feld">Gültig ab<input type="month" name="gueltig_ab" value="{{ monat }}" style="min-height:40px"></label>
+  <label class="feld">Warnen ab<select name="warnschwelle">{% for w in [75, 80, 90, 100] %}<option value="{{ w }}" {{ 'selected' if w == 90 }}>{{ w }} %</option>{% endfor %}</select></label>
+  <label class="check" style="flex:1 1 100%"><input type="checkbox" name="uebertrag" value="1"> Rest (oder Überziehung) in den Folgemonat übertragen – innerhalb des Kalenderjahres</label>
+  <button class="btn primaer" type="submit">Anlegen</button>
+</form>
+{% endcall %}
+{% endif %}
+{% endblock %}

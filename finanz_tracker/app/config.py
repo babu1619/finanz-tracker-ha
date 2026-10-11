@@ -3,12 +3,13 @@ import os
 import secrets
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.2.1"
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
 DB_PATH = DATA_DIR / "finanz.db"
 TMP_DIR = DATA_DIR / "tmp"
 PORT = int(os.environ.get("PORT", "8080"))
+HTTPS = False  # wird beim Start gesetzt (siehe __main__ / tls.py)
 
 # Login-Schutz
 LOGIN_MAX_FEHLVERSUCHE = 5

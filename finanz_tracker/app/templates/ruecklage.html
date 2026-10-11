@@ -1,0 +1,73 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_select, person_select, klappe with context %}
+{% block titel %}{{ r.name }}{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('sparen.index') }}">‹ Sparen</a></div>
+<div class="reihe">
+  <section class="karte breit">
+    <div class="leise">{{ 'Sparziel' if r.ziel_cent else 'Rücklage' }} · {{ r.konto_name }}{% if r.bezug == 'konto' %} (ganzes Konto){% endif %}</div>
+    <h1>{{ r.name }}</h1>
+    <div class="mono" style="font-size:28px;font-weight:600;margin:6px 0">{{ e.stand|euro }}</div>
+    {% if r.ziel_cent %}
+      <div class="fortschritt"><span style="width: {{ (e.fortschritt * 100)|round(1) }}%"></span></div>
+      <p>{{ (e.fortschritt * 100)|round|int }} % von {{ r.ziel_cent|euro_rund }}{% if e.fehlt %} · es fehlen {{ e.fehlt|euro_rund }}{% endif %}
+        {% if r.zieldatum %}<br>Zieldatum {{ r.zieldatum|monat }}{% if e.rate_noetig %}: nötig {{ e.rate_noetig|euro }} pro Monat{% endif %}
+          {% if e.im_plan %} <span class="tag ok">im Plan</span>{% elif e.im_plan is sameas false %} <span class="tag warn">hinter Plan – Zuführung erhöhen</span>{% endif %}{% endif %}
+        {% if e.erreicht_am %}<br>Bei {{ r.zufuehrung_cent|euro_rund }} pro Monat voraussichtlich erreicht: <b>{{ e.erreicht_am|monat }}</b>{% endif %}</p>
+    {% endif %}
+    {% if r.bezug == 'topf' %}
+    <h2 style="margin-top:18px">Bewegungen</h2>
+    <div class="scroll"><table class="tab"><thead><tr><th style="padding-left:0">Datum</th><th>Art</th><th>Notiz</th><th style="text-align:right">Betrag</th><th></th></tr></thead><tbody>
+      {% for bw in bewegungen %}<tr><td style="padding-left:0" class="mono">{{ bw.datum|datum }}</td><td>{{ {'zufuehrung':'Zuführung','entnahme':'Entnahme','korrektur':'Korrektur'}[bw.art] }}</td>
+        <td class="leise">{% if bw.buchung_id %}<a href="{{ url_for('buchungen.bearbeiten', bid=bw.buchung_id) }}">{{ bw.notiz or 'Buchung' }}</a>{% else %}{{ bw.notiz or '' }}{% endif %}</td>
+        <td class="betrag {{ 'pos' if bw.betrag_cent > 0 }}">{{ bw.betrag_cent|euro_vz }}</td>
+        <td>{% if darf_schreiben and not bw.buchung_id %}<form method="post" style="display:inline">{{ csrf() }}<input type="hidden" name="aktion" value="bewegung_loeschen"><input type="hidden" name="bid" value="{{ bw.id }}"><button class="btn klein" type="submit" aria-label="Bewegung entfernen">✕</button></form>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="5" class="leer">Noch keine Bewegungen.</td></tr>{% endfor %}
+    </tbody></table></div>
+    {% endif %}
+    {% if entnahmen and r.bezug == 'konto' %}
+    <h2 style="margin-top:18px">Daraus bezahlt</h2>
+    <table class="tab"><tbody>{% for b in entnahmen %}<tr><td style="padding-left:0">{{ b.buchungsdatum|datum }} · <a href="{{ url_for('buchungen.bearbeiten', bid=b.id) }}">{{ b.gegenpartei }}</a></td><td class="betrag">{{ b.betrag_cent|euro_vz }}</td></tr>{% endfor %}</tbody></table>
+    {% endif %}
+  </section>
+
+  {% if darf_schreiben %}
+  <div class="schmal" style="display:flex;flex-direction:column;gap:16px">
+    {% if r.bezug == 'topf' %}
+    <form method="post" class="karte" style="display:flex;flex-direction:column;gap:10px">{{ csrf() }}<input type="hidden" name="aktion" value="bewegung">
+      <h2 style="margin:0">Bewegung buchen</h2>
+      <div class="formreihe">
+        <label class="feld">Art<select name="art"><option value="zufuehrung">Zuführung</option><option value="entnahme">Entnahme</option><option value="korrektur">Korrektur (±)</option></select></label>
+        <label class="feld">Betrag<input type="text" name="betrag" inputmode="decimal" required></label>
+      </div>
+      <label class="feld">Notiz<input type="text" name="notiz" placeholder="optional"></label>
+      <button class="btn primaer" type="submit">Buchen</button>
+      <p class="leise" style="margin:0">Ausgaben am besten direkt in der Buchung über „Bezahlt aus Rücklage“ zuordnen – dann ist die Entnahme mit der Buchung verknüpft.</p>
+    </form>
+    {% endif %}
+    {% call klappe('ruecklage-bearbeiten', 'Einstellungen') %}
+    <form method="post" style="display:flex;flex-direction:column;gap:10px">{{ csrf() }}<input type="hidden" name="aktion" value="speichern">
+      <label class="feld">Name<input type="text" name="name" value="{{ r.name }}" required></label>
+      <div class="formreihe">
+        <label class="feld">Trägerkonto<select name="traeger_konto_id">{% for kk in konten %}<option value="{{ kk.id }}" {{ 'selected' if kk.id == r.traeger_konto_id }}>{{ kk.name }}</option>{% endfor %}</select></label>
+        <label class="feld">Art<select name="bezug"><option value="topf">Topf</option><option value="konto" {{ 'selected' if r.bezug == 'konto' }}>ganzes Konto</option></select></label>
+      </div>
+      <div class="formreihe">
+        <label class="feld">Zuführung/Monat<input type="text" name="zufuehrung" inputmode="decimal" value="{{ ('%.2f'|format(r.zufuehrung_cent / 100)).replace('.', ',') if r.zufuehrung_cent }}"></label>
+        <label class="feld">ab<input type="month" name="start_monat" value="{{ r.start_monat }}" style="min-height:40px"></label>
+      </div>
+      <div class="formreihe">
+        <label class="feld">Zielbetrag<input type="text" name="ziel" inputmode="decimal" value="{{ ('%.2f'|format(r.ziel_cent / 100)).replace('.', ',') if r.ziel_cent }}"></label>
+        <label class="feld">Zieldatum<input type="month" name="zieldatum" value="{{ r.zieldatum or '' }}" style="min-height:40px"></label>
+      </div>
+      <label class="feld">Für Kategorie{{ kat_select('kategorie_id', kategorien, r.kategorie_id) }}</label>
+      <label class="feld">Person{{ person_select('person_id', personen, r.person_id, 'gemeinsam') }}</label>
+      <label class="feld">Status<select name="aktiv"><option value="1">aktiv</option><option value="0" {{ 'selected' if not r.aktiv }}>beendet</option></select></label>
+      <button class="btn primaer" type="submit">Speichern</button>
+    </form>
+    <form method="post" data-frage="Wirklich löschen? Bewegungen gehen verloren; verknüpfte Buchungen bleiben erhalten." style="margin-top:12px">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen">
+      <button class="btn gefahr" type="submit">Löschen</button></form>
+    {% endcall %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

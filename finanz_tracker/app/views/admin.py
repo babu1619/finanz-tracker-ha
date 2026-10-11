@@ -94,3 +94,53 @@ def backup():
     log_aenderung(g.user["id"], "system", None, "backup")
     commit()
     return send_file(ziel, as_attachment=True, download_name=ziel.name)
+
+
+@bp.route("/sicherung", methods=["POST"])
+@auth.admin_required
+def sicherung():
+    from flask import Response
+    from ..services import sicherung as sich
+    try:
+        daten = sich.erstelle(request.form.get("passwort", ""))
+    except sich.SicherungsFehler as exc:
+        melde(str(exc), "warn")
+        return redirect(url_for("admin.index"))
+    log_aenderung(g.user["id"], "system", None, "sicherung_verschluesselt")
+    commit()
+    return Response(daten, mimetype="application/octet-stream",
+                    headers={"Content-Disposition": f"attachment; filename=finanz-{datetime.now():%Y%m%d-%H%M}.ftbak"})
+
+
+@bp.route("/wiederherstellen", methods=["POST"])
+@auth.admin_required
+def wiederherstellen():
+    from flask import session
+    from ..db import close_db
+    from ..services import sicherung as sich
+    datei = request.files.get("datei")
+    if not datei:
+        melde("Bitte eine Sicherungsdatei wählen.", "warn")
+        return redirect(url_for("admin.index"))
+    daten = datei.read()
+    try:
+        sich.entschluessele(daten, request.form.get("passwort", ""))  # erst prüfen, dann den aktuellen Stand sichern
+    except sich.SicherungsFehler as exc:
+        melde(str(exc), "bad")
+        return redirect(url_for("admin.index"))
+    vorher = config.DATA_DIR / f"vor-wiederherstellung-{datetime.now():%Y%m%d-%H%M%S}.db"
+    quelle = sqlite3.connect(str(config.DB_PATH))
+    kopie = sqlite3.connect(str(vorher))
+    with kopie:
+        quelle.backup(kopie)
+    quelle.close()
+    kopie.close()
+    close_db()
+    try:
+        sich.stelle_wieder_her(daten, request.form.get("passwort", ""))
+    except sich.SicherungsFehler as exc:
+        melde(str(exc), "bad")
+        return redirect(url_for("admin.index"))
+    session.clear()
+    melde(f"Sicherung wiederhergestellt. Der vorherige Stand liegt als {vorher.name} im Datenordner. Bitte neu anmelden.")
+    return redirect(url_for("auth.login"))

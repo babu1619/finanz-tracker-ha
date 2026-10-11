@@ -44,6 +44,13 @@
           {% for v, t in [(0,'wie Buchungsdatum'),(1,'Folgemonat (+1), z. B. Gehalt Ende des Monats'),(-1,'Vormonat (−1)')] %}
           <option value="{{ v }}" {{ 'selected' if (akt.monat_versatz or 0) == v }}>{{ t }}</option>{% endfor %}</select></label>
       </div>
+      <div class="formreihe">
+        <label class="feld">Verteilen auf<select name="verteilung_monate">
+          {% for v, t in [(1,'nicht verteilen'),(3,'3 Monate (Quartal)'),(6,'6 Monate'),(12,'12 Monate (Jahresbeitrag)')] %}
+          <option value="{{ v }}" {{ 'selected' if (akt.verteilung_monate or 1) == v }}>{{ t }}</option>{% endfor %}</select></label>
+        <label class="feld">Tag setzen<input type="text" name="tag_name" value="{{ tag_name }}" list="regel-tags" placeholder="optional, z. B. Steuer 2026">
+          <datalist id="regel-tags">{% for t in alle_tags %}<option value="{{ t.name }}">{% endfor %}</datalist></label>
+      </div>
       <label class="check"><input type="checkbox" name="als_umbuchung" value="1" {{ 'checked' if akt.als_umbuchung }}> Als Umbuchung zu einem eigenen Konto außerhalb des Tools behandeln (z. B. Depot-Sparplan). Nicht für Darlehensraten verwenden – die sind Ausgaben.</label>
     </fieldset>
 

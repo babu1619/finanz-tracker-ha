@@ -74,8 +74,12 @@ def _speichern(kid):
 @auth.admin_required
 def neu():
     if request.method == "POST":
-        if _speichern(None):
+        kid = _speichern(None)
+        if kid:
             melde("Konto angelegt.")
+            if request.form.get("typ") == "darlehen":
+                melde("Jetzt die Konditionen eintragen – daraus entstehen Tilgungsplan und Simulation.")
+                return redirect(url_for("darlehen.konditionen", kid=kid))
             return redirect(url_for("konten.liste"))
     return _form()
 
