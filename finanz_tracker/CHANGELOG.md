@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.3.0 – Oktober 2026
+
+- Buchungen: Kategorie, Person und Tags direkt in der Tabelle bearbeiten (wird sofort gespeichert); Tags als eigene Spalte
+- Buchungen: Sortieren und Filtern über die Spaltenüberschriften, aktive Filter als entfernbare Chips
+- Prüf-Modus: Tags vergeben (mit Vorschlägen), Umbuchung mit Gegenkonto festlegen – die Gegenbuchung wird sofort oder beim nächsten Import verknüpft
+- Prüf-Modus: Tabellenansicht für die Massenbearbeitung offener Buchungen
+- Konten: Spalte „Konto“ beim seitlichen Scrollen fixiert, Bearbeiten-Knopf mit Stift links vor dem Konto
+- Darlehenskonten auf der Kontenseite verlinken auf Plan und Simulation
+
 ## 0.2.2 – Oktober 2026
 
 - Kopfzeile mit den Reitern bleibt beim Scrollen oben fixiert (PC und Handy)

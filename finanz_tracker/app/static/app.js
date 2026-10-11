@@ -197,6 +197,156 @@ document.addEventListener("DOMContentLoaded", () => {
     if (feld) feld.value = b.dataset.richtung;
   }));
 
+  // ---- Kategorie-Eingabe mit gemeinsamer Liste (Tabellen): Text -> verstecktes Feld .kat-id
+  const katListe = document.getElementById("kat-liste");
+  const katId = (text) => {
+    if (!katListe || !text) return "";
+    const opt = Array.from(katListe.options).find((o) => o.value === text);
+    return opt ? opt.dataset.id : null;  // null = ungültig
+  };
+  document.querySelectorAll(".kat-eingabe").forEach((eingabe) => {
+    const ziel = eingabe.parentElement.querySelector(".kat-id");
+    eingabe.addEventListener("input", () => {
+      const id = katId(eingabe.value);
+      if (ziel) ziel.value = id || "";
+      eingabe.setCustomValidity(id === null ? "Bitte eine Kategorie aus der Liste wählen" : "");
+    });
+  });
+
+  // ---- Direkte Bearbeitung in der Buchungstabelle
+  const csrf = (document.querySelector("input[name=csrf]") || {}).value || "";
+  async function speichereInline(feldBox, wert) {
+    const eingabe = feldBox.querySelector(".inline-eingabe");
+    feldBox.classList.remove("ok", "fehler");
+    feldBox.classList.add("laedt");
+    try {
+      const r = await fetch(`/buchungen/${feldBox.dataset.bid}/inline`, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-CSRF": csrf },
+        body: JSON.stringify({ feld: feldBox.dataset.feld, wert: wert }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.meldung || "Speichern fehlgeschlagen");
+      if (feldBox.dataset.feld !== "person") eingabe.value = d.anzeige || "";
+      eingabe.dataset.alt = eingabe.value;
+      eingabe.classList.toggle("leer", !eingabe.value);
+      const quelle = feldBox.parentElement.querySelector(".quelle, .tag.offen");
+      if (feldBox.dataset.feld === "kategorie" && quelle) quelle.remove();
+      feldBox.classList.add("ok");
+      setTimeout(() => feldBox.classList.remove("ok"), 1200);
+    } catch (e) {
+      feldBox.classList.add("fehler");
+      eingabe.title = e.message;
+      if (eingabe.dataset.alt !== undefined && feldBox.dataset.feld !== "person") eingabe.value = eingabe.dataset.alt;
+    } finally {
+      feldBox.classList.remove("laedt");
+    }
+  }
+  document.querySelectorAll(".inline-feld").forEach((box) => {
+    const eingabe = box.querySelector(".inline-eingabe");
+    eingabe.dataset.alt = eingabe.value;
+    if (box.dataset.feld === "person") {
+      eingabe.addEventListener("change", () => speichereInline(box, eingabe.value));
+    } else if (box.dataset.feld === "kategorie") {
+      const fertig = () => {
+        if (eingabe.value === eingabe.dataset.alt) return;
+        const id = katId(eingabe.value);
+        if (id === null) { box.classList.add("fehler"); eingabe.title = "Bitte eine Kategorie aus der Liste wählen"; return; }
+        speichereInline(box, id || "");
+      };
+      eingabe.addEventListener("change", fertig);
+      eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); eingabe.blur(); } if (e.key === "Escape") { eingabe.value = eingabe.dataset.alt; eingabe.blur(); } });
+    } else {
+      eingabe.addEventListener("change", () => { if (eingabe.value !== eingabe.dataset.alt) speichereInline(box, eingabe.value); });
+      eingabe.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); eingabe.blur(); } if (e.key === "Escape") { eingabe.value = eingabe.dataset.alt; eingabe.blur(); } });
+    }
+  });
+
+  // ---- Spaltenfilter: Popup über allem anzeigen (nicht von der scrollenden Tabelle abgeschnitten)
+  const filterDetails = Array.from(document.querySelectorAll("details.spaltenfilter"));
+  function platziere(d) {
+    const pop = d.querySelector(".filter-pop");
+    const r = d.querySelector("summary").getBoundingClientRect();
+    const breite = Math.min(300, window.innerWidth - 24);
+    pop.style.width = breite + "px";
+    pop.style.left = Math.max(12, Math.min(r.left, window.innerWidth - breite - 12)) + "px";
+    pop.style.top = (r.bottom + 6) + "px";
+  }
+  filterDetails.forEach((d) => d.addEventListener("toggle", () => {
+    if (!d.open) return;
+    filterDetails.forEach((x) => { if (x !== d) x.open = false; });
+    platziere(d);
+    const erstes = d.querySelector(".filter-pop input:not([type=hidden]), .filter-pop select");
+    if (erstes) erstes.focus();
+  }));
+  const schliesseFilter = () => filterDetails.forEach((d) => { d.open = false; });
+  document.addEventListener("click", (e) => { if (!e.target.closest("details.spaltenfilter")) schliesseFilter(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") schliesseFilter(); });
+  window.addEventListener("scroll", () => filterDetails.filter((d) => d.open).forEach(platziere), { passive: true });
+  document.querySelectorAll(".scroll").forEach((s) => s.addEventListener("scroll", schliesseFilter, { passive: true }));
+
+  // ---- Prüf-Modus einzeln: Art (Kategorie/Umbuchung) und Tag-Vorschläge
+  const artFelder = document.querySelectorAll("input[data-art]");
+  if (artFelder.length) {
+    const zeigeArt = () => {
+      const art = (document.querySelector("input[data-art]:checked") || {}).value || "kategorie";
+      document.querySelectorAll("[data-art-fuer]").forEach((el) => { el.hidden = el.dataset.artFuer !== art; });
+      document.querySelectorAll(".umschalter.gross label").forEach((l) => l.classList.toggle("an", l.querySelector("input").checked));
+    };
+    artFelder.forEach((r) => r.addEventListener("change", zeigeArt));
+    zeigeArt();
+  }
+  document.querySelectorAll("[data-tag-plus]").forEach((k) => k.addEventListener("click", () => {
+    const feld = document.getElementById("pruef-tags");
+    const liste = feld.value.split(",").map((t) => t.trim()).filter(Boolean);
+    if (!liste.includes(k.dataset.tagPlus)) liste.push(k.dataset.tagPlus);
+    feld.value = liste.join(", ");
+    k.remove();
+  }));
+
+  // ---- Prüf-Modus Tabelle: Werte auf ausgewählte Zeilen übertragen
+  const pruefTab = document.getElementById("pruef-tabelle");
+  if (pruefTab) {
+    const zeilen = () => Array.from(pruefTab.querySelectorAll("tbody tr"));
+    const gewaehlt = () => zeilen().filter((z) => z.querySelector("input[name=ids]").checked);
+    pruefTab.querySelectorAll("tbody tr").forEach((z) => {
+      z.querySelectorAll("input:not([name=ids]), select").forEach((el) => el.addEventListener("change", () => {
+        z.querySelector("input[name=ids]").checked = true;
+        z.classList.add("sel");
+        zaehle();
+      }));
+      z.querySelector("input[name=ids]").addEventListener("change", (e) => z.classList.toggle("sel", e.target.checked));
+    });
+    document.getElementById("alle-mit-vorschlag").addEventListener("click", () => {
+      zeilen().forEach((z) => { if (z.dataset.vorschlag === "1") { z.querySelector("input[name=ids]").checked = true; z.classList.add("sel"); } });
+      zaehle();
+    });
+    document.getElementById("massen-anwenden").addEventListener("click", () => {
+      const m = (n) => pruefTab.querySelector(`[data-massen="${n}"]`);
+      const katText = m("kat").value, katWert = katId(katText);
+      if (katText && katWert === null) { m("kat").reportValidity(); return; }
+      const auswahl = gewaehlt();
+      if (!auswahl.length) { alert("Bitte zuerst Zeilen ankreuzen."); return; }
+      auswahl.forEach((z) => {
+        if (katText) { z.querySelector(".kat-eingabe").value = katText; z.querySelector(".kat-id").value = katWert; }
+        const p = m("person").value;
+        if (p) z.querySelector("[data-feld=person]").value = p === "0" ? "" : p;
+        const t = m("tags").value.trim();
+        if (t) {
+          const feld = z.querySelector("[data-feld=tags]");
+          const liste = feld.value.split(",").map((x) => x.trim()).filter(Boolean);
+          t.split(",").map((x) => x.trim()).filter(Boolean).forEach((x) => { if (!liste.includes(x)) liste.push(x); });
+          feld.value = liste.join(", ");
+        }
+        const g = m("gegen").value;
+        if (g) {
+          const sel = z.querySelector("[data-feld=gegen]");
+          const ziel = g === "kein" ? "" : g;
+          if (Array.from(sel.options).some((o) => o.value === ziel)) sel.value = ziel;
+        }
+      });
+    });
+  }
+
   // Tastatur im Prüf-Modus: Enter = speichern (Standard), "s" = überspringen
   const skip = document.getElementById("ueberspringen");
   if (skip) {

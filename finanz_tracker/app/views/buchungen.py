@@ -6,7 +6,7 @@ from flask import Blueprint, Response, abort, g, redirect, render_template, requ
 from .. import auth
 from ..db import q, q1, exe, commit, log_aenderung
 from ..services import kategorien, ruecklagen, splits, tags, umbuchungen, zuordnung
-from ..util import ist_monat, monat_plus, aktueller_monat, parse_euro_eingabe
+from ..util import ist_monat, monat_plus, aktueller_monat, parse_euro_eingabe, datum_de
 from . import melde, int_oder_none
 
 bp = Blueprint("buchungen", __name__, url_prefix="/buchungen")
@@ -22,14 +22,39 @@ def _filter():
         "tag": int_oder_none(a.get("tag")),
         "suche": a.get("suche", "").strip(),
         "status": a.get("status", ""),
+        "partei": a.get("partei", "").strip(),
+        "von": a.get("von", "") if _ist_datum(a.get("von", "")) else "",
+        "bis": a.get("bis", "") if _ist_datum(a.get("bis", "")) else "",
+        "min": a.get("min", "").strip(),
+        "max": a.get("max", "").strip(),
+        "richtung": a.get("richtung", "") if a.get("richtung") in ("aus", "ein") else "",
+        "sort": a.get("sort", "") if a.get("sort", "").lstrip("-") in SORTIERUNG else "",
     }
     if f["monat"] and f["monat"] != "alle" and not ist_monat(f["monat"]):
         f["monat"] = ""
     return f
 
 
+SORTIERUNG = {
+    "datum": "b.buchungsdatum {r}, b.id {r}",
+    "monat": "b.abrechnungsmonat {r}, b.buchungsdatum DESC",
+    "konto": "k.name COLLATE NOCASE {r}, b.buchungsdatum DESC",
+    "partei": "b.gegenpartei COLLATE NOCASE {r}, b.buchungsdatum DESC",
+    "kategorie": "kat.pfad IS NULL, kat.pfad COLLATE NOCASE {r}, b.buchungsdatum DESC",
+    "person": "p.name IS NULL, p.name COLLATE NOCASE {r}, b.buchungsdatum DESC",
+    "tags": "tagsort IS NULL, tagsort COLLATE NOCASE {r}, b.buchungsdatum DESC",
+    "betrag": "b.betrag_cent {r}, b.buchungsdatum DESC",
+}
+FILTER_FELDER = ("konto", "kategorie", "person", "tag", "suche", "status", "partei", "von", "bis", "min", "max", "richtung")
+
+
+def _ist_datum(text) -> bool:
+    import re
+    return bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", text or ""))
+
+
 def filter_aktiv(f) -> int:
-    return sum(1 for k in ("konto", "kategorie", "person", "tag", "suche", "status") if f.get(k))
+    return sum(1 for k in FILTER_FELDER if f.get(k))
 
 
 def _abfrage(f, limit=500):
@@ -63,6 +88,27 @@ def _abfrage(f, limit=500):
                      "printf('%.2f', abs(b.betrag_cent)/100.0) LIKE ?)")
         s = f"%{f['suche']}%"
         params.extend([s, s, s, f"%{f['suche'].replace(',', '.')}%"])
+    if f["partei"]:
+        where.append("b.gegenpartei LIKE ?")
+        params.append(f"%{f['partei']}%")
+    if f["von"]:
+        where.append("b.buchungsdatum >= ?")
+        params.append(f["von"])
+    if f["bis"]:
+        where.append("b.buchungsdatum <= ?")
+        params.append(f["bis"])
+    for feld, op in (("min", ">="), ("max", "<=")):
+        if f[feld]:
+            try:
+                wert = abs(parse_euro_eingabe(f[feld]))
+            except ValueError:
+                continue
+            where.append(f"abs(b.betrag_cent) {op} ?")
+            params.append(wert)
+    if f["richtung"] == "aus":
+        where.append("b.betrag_cent < 0")
+    elif f["richtung"] == "ein":
+        where.append("b.betrag_cent > 0")
     if f["status"] == "ungeprueft":
         where.append("b.geprueft = 0 AND b.kategorie_id IS NOT NULL AND b.ist_umbuchung = 0")
     elif f["status"] == "umbuchung":
@@ -77,18 +123,28 @@ def _abfrage(f, limit=500):
         where.append("b.manuell_erfasst = 1")
     sql_where = " AND ".join(where)
     rows = q(f"""SELECT b.*, k.name AS konto_name, k.typ AS konto_typ, kat.pfad AS kat_pfad,
-                        p.name AS person_name, r.name AS regel_name, rl.name AS ruecklage_name
+                        p.name AS person_name, r.name AS regel_name, rl.name AS ruecklage_name,
+                        gk.name AS umbuchung_konto_name,
+                        (SELECT MIN(t.name) FROM buchung_tag bt JOIN tag t ON t.id = bt.tag_id
+                         WHERE bt.buchung_id = b.id) AS tagsort
                  FROM buchung b JOIN konto k ON k.id = b.konto_id
                  LEFT JOIN kategorie kat ON kat.id = b.kategorie_id
                  LEFT JOIN person p ON p.id = b.person_id
                  LEFT JOIN regel r ON r.id = b.regel_id
                  LEFT JOIN ruecklage rl ON rl.id = b.ruecklage_id
-                 WHERE {sql_where} ORDER BY b.buchungsdatum DESC, b.id DESC LIMIT {int(limit)}""", params)
+                 LEFT JOIN konto gk ON gk.id = b.umbuchung_konto_id
+                 WHERE {sql_where} ORDER BY {_order(f["sort"])} LIMIT {int(limit)}""", params)
     summe = q1(f"""SELECT COUNT(*) AS n,
                      COALESCE(SUM(CASE WHEN b.betrag_cent < 0 AND b.ist_umbuchung = 0 THEN b.betrag_cent END),0) AS aus,
                      COALESCE(SUM(CASE WHEN b.betrag_cent > 0 AND b.ist_umbuchung = 0 THEN b.betrag_cent END),0) AS ein
                    FROM buchung b WHERE {sql_where}""", params)
     return rows, summe, sichtbar
+
+
+def _order(sort: str) -> str:
+    schluessel = (sort or "-datum").lstrip("-")
+    richtung = "DESC" if (sort or "-datum").startswith("-") else "ASC"
+    return SORTIERUNG.get(schluessel, SORTIERUNG["datum"]).format(r=richtung)
 
 
 def _split_details(ids):
@@ -118,7 +174,43 @@ def liste():
                            kategorien=kategorien.alle(), personen=q("SELECT * FROM person WHERE aktiv = 1 ORDER BY name"),
                            monate=monate, tags_je=tags.fuer_buchungen(ids), splits_je=_split_details(ids),
                            alle_tags=q("SELECT * FROM tag ORDER BY name"), filter_n=filter_aktiv(f),
-                           tag_name=(q1("SELECT name FROM tag WHERE id = ?", (f["tag"],)) or {"name": ""})["name"] if f["tag"] else "")
+                           tag_name=(q1("SELECT name FROM tag WHERE id = ?", (f["tag"],)) or {"name": ""})["name"] if f["tag"] else "",
+                           basis={k: v for k, v in f.items() if v not in (None, "")},
+                           aktive=_aktive_filter(f, konten))
+
+
+def _aktive_filter(f, konten) -> list[tuple[str, str]]:
+    """Für die Chip-Leiste: (Schlüssel, Beschriftung) aller gesetzten Filter."""
+    namen = {k["id"]: k["name"] for k in konten}
+    erg = []
+    if f["konto"]:
+        erg.append(("konto", f"Konto: {namen.get(f['konto'], '?')}"))
+    if f["kategorie"]:
+        k = q1("SELECT pfad FROM kategorie WHERE id = ?", (int_oder_none(f["kategorie"]) or 0,))
+        erg.append(("kategorie", "ohne Kategorie" if f["kategorie"] == "ohne" else f"Kategorie: {k['pfad'] if k else '?'}"))
+    if f["person"]:
+        p = q1("SELECT name FROM person WHERE id = ?", (f["person"],))
+        erg.append(("person", f"Person: {p['name'] if p else '?'}"))
+    if f["tag"]:
+        t = q1("SELECT name FROM tag WHERE id = ?", (f["tag"],))
+        erg.append(("tag", f"#{t['name'] if t else '?'}"))
+    if f["partei"]:
+        erg.append(("partei", f"Gegenpartei enthält „{f['partei']}“"))
+    if f["suche"]:
+        erg.append(("suche", f"Suche „{f['suche']}“"))
+    if f["von"]:
+        erg.append(("von", f"ab {datum_de(f['von'])}"))
+    if f["bis"]:
+        erg.append(("bis", f"bis {datum_de(f['bis'])}"))
+    if f["min"]:
+        erg.append(("min", f"Betrag ≥ {f['min']} €"))
+    if f["max"]:
+        erg.append(("max", f"Betrag ≤ {f['max']} €"))
+    if f["richtung"]:
+        erg.append(("richtung", "nur Ausgaben" if f["richtung"] == "aus" else "nur Einnahmen"))
+    if f["status"]:
+        erg.append(("status", f"Status: {f['status']}"))
+    return erg
 
 
 @bp.route("/sammel", methods=["POST"])
@@ -193,6 +285,42 @@ def sammel():
     return redirect(request.form.get("zurueck") or url_for("buchungen.liste"))
 
 
+@bp.route("/<int:bid>/inline", methods=["POST"])
+@auth.schreibrecht
+def inline(bid):
+    """Direkte Bearbeitung in der Tabelle (Kategorie, Person, Tags). Antwort als JSON."""
+    from flask import jsonify
+    b = q1("SELECT * FROM buchung WHERE id = ?", (bid,))
+    if not b or not auth.konto_sichtbar(b["konto_id"]):
+        abort(404)
+    daten = request.get_json(silent=True) or request.form
+    feld, wert = daten.get("feld"), daten.get("wert")
+    if feld == "kategorie":
+        if b["ist_umbuchung"] or splits.hat_split([bid]):
+            return jsonify(ok=False, meldung="Umbuchung oder aufgeteilte Buchung – bitte in der Buchung bearbeiten."), 400
+        kat = int_oder_none(wert)
+        if kat and not q1("SELECT 1 FROM kategorie WHERE id = ?", (kat,)):
+            return jsonify(ok=False, meldung="Unbekannte Kategorie."), 400
+        zuordnung.feedback(b, kat)
+        exe("UPDATE buchung SET kategorie_id = ?, zuordnung_quelle = 'manuell', geprueft = 1, regel_id = NULL, "
+            "vorschlag_kategorie_id = NULL WHERE id = ?", (kat, bid))
+        anzeige = (q1("SELECT pfad FROM kategorie WHERE id = ?", (kat,)) or {"pfad": ""})["pfad"] if kat else ""
+    elif feld == "person":
+        pid = int_oder_none(wert)
+        if pid and not q1("SELECT 1 FROM person WHERE id = ?", (pid,)):
+            return jsonify(ok=False, meldung="Unbekannte Person."), 400
+        exe("UPDATE buchung SET person_id = ? WHERE id = ?", (pid, bid))
+        anzeige = (q1("SELECT name FROM person WHERE id = ?", (pid,)) or {"name": ""})["name"] if pid else ""
+    elif feld == "tags":
+        tags.setze(bid, [t for t in str(wert or "").split(",") if t.strip()])
+        anzeige = ", ".join(t["name"] for t in tags.fuer_buchungen([bid]).get(bid, []))
+    else:
+        return jsonify(ok=False, meldung="Unbekanntes Feld."), 400
+    log_aenderung(g.user["id"], "buchung", bid, f"inline:{feld}", {"wert": wert})
+    commit()
+    return jsonify(ok=True, anzeige=anzeige)
+
+
 def _split_zeilen_aus_formular():
     zeilen = []
     betraege = request.form.getlist("split_betrag")
@@ -211,8 +339,9 @@ def _split_zeilen_aus_formular():
 @bp.route("/<int:bid>", methods=["GET", "POST"])
 @auth.login_required
 def bearbeiten(bid):
-    b = q1("""SELECT b.*, k.name AS konto_name, k.typ AS konto_typ, r.name AS regel_name, kat.pfad AS kat_pfad
-              FROM buchung b JOIN konto k ON k.id = b.konto_id
+    b = q1("""SELECT b.*, k.name AS konto_name, k.typ AS konto_typ, r.name AS regel_name, kat.pfad AS kat_pfad,
+                     gk.name AS umbuchung_konto_name
+              FROM buchung b JOIN konto k ON k.id = b.konto_id LEFT JOIN konto gk ON gk.id = b.umbuchung_konto_id
               LEFT JOIN regel r ON r.id = b.regel_id LEFT JOIN kategorie kat ON kat.id = b.kategorie_id
               WHERE b.id = ?""", (bid,))
     if not b or not auth.konto_sichtbar(b["konto_id"]):

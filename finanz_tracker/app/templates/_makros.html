@@ -46,3 +46,7 @@
   <div class="klappe-inhalt">{{ caller() }}</div>
 </details>
 {%- endmacro %}
+
+{% macro stift(url, titel='Bearbeiten') -%}
+<a class="stift" href="{{ url }}" title="{{ titel }}" aria-label="{{ titel }}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z M13.5 6.5l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></a>
+{%- endmacro %}

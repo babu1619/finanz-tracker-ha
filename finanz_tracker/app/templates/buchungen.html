@@ -1,5 +1,22 @@
 {% extends "base.html" %}{% from "_makros.html" import csrf, kat_select, person_select, quelle, tagliste, klappe with context %}
 {% block titel %}Buchungen{% endblock %}
+{% macro sortlink(schluessel, text, rechts=False) -%}
+{%- set aktiv = (f.sort or '-datum').lstrip('-') == schluessel -%}
+{%- set ab = (f.sort or '-datum').startswith('-') -%}
+{%- set neu = ('' if ab else '-') if aktiv else ('-' if schluessel in ('datum', 'monat') else '') -%}
+<a class="sortlink{{ ' aktiv' if aktiv }}" href="{{ url_for('buchungen.liste', **dict(basis, sort=neu ~ schluessel)) }}" title="Sortieren">{{ text }}<span class="pfeil" aria-hidden="true">{% if aktiv %}{{ '▼' if ab else '▲' }}{% else %}↕{% endif %}</span></a>
+{%- endmacro %}
+{% macro filterkopf(felder, aktiv) -%}
+<details class="spaltenfilter{{ ' aktiv' if aktiv }}">
+  <summary title="Filtern" aria-label="Spalte filtern"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4-2v-4z" fill="{{ 'currentColor' if aktiv else 'none' }}" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></summary>
+  <form method="get" class="filter-pop">
+    {% for k, v in basis.items() if k not in felder %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    {{ caller() }}
+    <div class="formreihe"><button class="btn primaer klein" type="submit">Anwenden</button>
+      {% if aktiv %}<a class="btn klein" href="{{ url_for('buchungen.liste', **basis|dict_ohne(felder)) }}">Entfernen</a>{% endif %}</div>
+  </form>
+</details>
+{%- endmacro %}
 {% block inhalt %}
 <div class="kopf">
   <h1>Buchungen</h1>
@@ -33,6 +50,12 @@
 </form>
 {% endcall %}
 
+<datalist id="tagliste">{% for t in alle_tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
+<datalist id="kat-liste">{% for k in kategorien %}<option value="{{ k.pfad }}" data-id="{{ k.id }}"></option>{% endfor %}</datalist>
+{% if aktive %}
+<div class="chips filterchips" aria-label="Aktive Filter">{% for schluessel, text in aktive %}<a href="{{ url_for('buchungen.liste', **basis|dict_ohne([schluessel])) }}" title="Filter entfernen">{{ text }} <span aria-hidden="true">✕</span></a>{% endfor %}
+  <a href="{{ url_for('buchungen.liste', monat=f.monat or 'alle', sort=f.sort or None) }}" class="leise">alle Filter entfernen</a></div>
+{% endif %}
 <form method="post" action="{{ url_for('buchungen.sammel') }}">
   {{ csrf() }}<input type="hidden" name="zurueck" value="{{ request.full_path }}">
   {% if darf_schreiben %}
@@ -52,7 +75,6 @@
     <label class="feld" data-fuer="verteilung">Monate<select name="verteilung_monate">{% for v in [1,2,3,4,6,12,24] %}<option value="{{ v }}" {{ 'selected' if v == 12 }}>{{ v }}{{ ' (nicht verteilen)' if v == 1 }}</option>{% endfor %}</select></label>
     <label class="feld" data-fuer="tag">Tag<input type="text" name="tag_name" list="tagliste" placeholder="neu oder vorhanden"></label>
     <label class="feld" data-fuer="tag_weg">Tag<select name="tag_id">{% for t in alle_tags %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></label>
-    <datalist id="tagliste">{% for t in alle_tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
     <button class="btn" type="submit">Ausführen</button>
   </div>
   {% endcall %}
@@ -62,7 +84,23 @@
     <div class="scroll"><table class="tab buchungstab">
       <thead><tr>
         {% if darf_schreiben %}<th class="sp-check" style="width:30px"><input type="checkbox" id="alle" aria-label="Alle auswählen"></th>{% endif %}
-        <th class="sp-datum">Datum</th><th class="sp-neben">Abr.-Monat</th><th class="sp-neben">Konto</th><th>Gegenpartei · Verwendungszweck</th><th class="sp-neben">Kategorie</th><th class="sp-neben">Person</th><th style="text-align:right">Betrag</th>
+        <th class="sp-datum"><div class="kopfzelle">{{ sortlink('datum', 'Datum') }}
+          {% call filterkopf(['von', 'bis'], f.von or f.bis) %}<label class="feld">von<input type="date" name="von" value="{{ f.von }}"></label><label class="feld">bis<input type="date" name="bis" value="{{ f.bis }}"></label>{% endcall %}</div></th>
+        <th class="sp-neben"><div class="kopfzelle">{{ sortlink('monat', 'Abr.-Monat') }}
+          {% call filterkopf(['monat'], f.monat and f.monat != 'alle') %}<label class="feld">Abrechnungsmonat<select name="monat"><option value="alle">alle</option>{% for m in monate %}<option value="{{ m }}" {{ 'selected' if f.monat == m }}>{{ m|monat }}</option>{% endfor %}</select></label>{% endcall %}</div></th>
+        <th class="sp-neben"><div class="kopfzelle">{{ sortlink('konto', 'Konto') }}
+          {% call filterkopf(['konto'], f.konto) %}<label class="feld">Konto<select name="konto"><option value="">alle</option>{% for k in konten %}<option value="{{ k.id }}" {{ 'selected' if f.konto == k.id }}>{{ k.name }}</option>{% endfor %}</select></label>{% endcall %}</div></th>
+        <th><div class="kopfzelle">{{ sortlink('partei', 'Gegenpartei · Verwendungszweck') }}
+          {% call filterkopf(['partei', 'suche'], f.partei or f.suche) %}<label class="feld">Gegenpartei enthält<input type="text" name="partei" value="{{ f.partei }}"></label><label class="feld">oder überall suchen<input type="search" name="suche" value="{{ f.suche }}" placeholder="auch Zweck, Notiz, Betrag"></label>{% endcall %}</div></th>
+        <th class="sp-neben sp-kat"><div class="kopfzelle">{{ sortlink('kategorie', 'Kategorie') }}
+          {% call filterkopf(['kategorie'], f.kategorie) %}<label class="feld">Kategorie (inkl. Unterkategorien)<select name="kategorie"><option value="">alle</option><option value="ohne" {{ 'selected' if f.kategorie == 'ohne' }}>ohne Kategorie</option>{% for k in kategorien %}<option value="{{ k.id }}" {{ 'selected' if f.kategorie == k.id|string }}>{{ '   ' * k.ebene }}{{ k.name }}</option>{% endfor %}</select></label>{% endcall %}</div></th>
+        <th class="sp-neben"><div class="kopfzelle">{{ sortlink('person', 'Person') }}
+          {% call filterkopf(['person'], f.person) %}<label class="feld">Person{{ person_select('person', personen, f.person, 'alle') }}</label>{% endcall %}</div></th>
+        <th class="sp-neben sp-tags"><div class="kopfzelle">{{ sortlink('tags', 'Tags') }}
+          {% call filterkopf(['tag'], f.tag) %}<label class="feld">Tag<select name="tag"><option value="">alle</option>{% for t in alle_tags %}<option value="{{ t.id }}" {{ 'selected' if f.tag == t.id }}>{{ t.name }}</option>{% endfor %}</select></label>{% endcall %}</div></th>
+        <th style="text-align:right"><div class="kopfzelle rechtsbuendig">{{ sortlink('betrag', 'Betrag') }}
+          {% call filterkopf(['min', 'max', 'richtung'], f.min or f.max or f.richtung) %}<label class="feld">Richtung<select name="richtung"><option value="">alle</option><option value="aus" {{ 'selected' if f.richtung == 'aus' }}>nur Ausgaben</option><option value="ein" {{ 'selected' if f.richtung == 'ein' }}>nur Einnahmen</option></select></label>
+            <div class="formreihe"><label class="feld">ab €<input type="text" name="min" inputmode="decimal" value="{{ f.min }}"></label><label class="feld">bis €<input type="text" name="max" inputmode="decimal" value="{{ f.max }}"></label></div>{% endcall %}</div></th>
       </tr></thead>
       <tbody>
       {% for b in rows %}
@@ -75,19 +113,23 @@
           <td class="leise sp-neben" style="white-space:nowrap">{{ b.konto_name }}</td>
           <td><a href="{{ url_for('buchungen.bearbeiten', bid=b.id, zurueck=request.full_path) }}" style="color:inherit;text-decoration:none"><b>{{ b.gegenpartei or '–' }}</b></a>
             <div class="leise">{{ b.verwendungszweck|truncate(110) }}</div>{% if b.notiz %}<div class="klein">Notiz: {{ b.notiz }}</div>{% endif %}
-            {% if tags_je.get(b.id) %}<div style="margin-top:3px">{{ tagliste(tags_je.get(b.id)) }}</div>{% endif %}
+            {% if tags_je.get(b.id) %}<div class="nur-handy" style="margin-top:3px">{{ tagliste(tags_je.get(b.id)) }}</div>{% endif %}
             <div class="nur-handy" style="margin-top:3px"><span class="leise">{{ b.konto_name }} · </span>{% if b.ist_umbuchung %}<span class="tag">Umbuchung</span>{% elif teile %}<span class="tag info">Aufgeteilt · {{ teile|length }} Teile</span>{% elif b.kat_pfad %}<span class="leise">{{ b.kat_pfad }}</span>{% if not b.geprueft %} <span class="tag offen">ungeprüft</span>{% endif %}{% else %}<span class="tag warn">ohne Kategorie</span>{% endif %}</div></td>
-          <td class="sp-neben" style="font-size:13px">{% if b.ist_umbuchung %}<span class="tag">Umbuchung</span>
+          {% set inline = darf_schreiben and not b.ist_umbuchung and not teile %}
+          <td class="sp-neben sp-kat" style="font-size:13px">{% if b.ist_umbuchung %}<span class="tag">Umbuchung</span>{% if b.umbuchung_konto_name and not b.umbuchung_partner_id %}<span class="quelle">mit {{ b.umbuchung_konto_name }} · Gegenbuchung folgt</span>{% endif %}
             {% elif teile %}<span class="tag info">Aufgeteilt</span>
               {% for s in teile %}<div class="splitzeile"><span>{{ s.kat_pfad or '–' }}</span><span class="mono">{{ s.betrag_cent|euro }}</span></div>{% endfor %}
+            {% elif inline %}<div class="inline-feld" data-bid="{{ b.id }}" data-feld="kategorie">
+                <input type="text" class="kat-eingabe inline-eingabe{{ ' leer' if not b.kat_pfad }}" list="kat-liste" value="{{ b.kat_pfad or '' }}" placeholder="ohne Kategorie" autocomplete="off" aria-label="Kategorie"><input type="hidden" class="kat-id" value="{{ b.kategorie_id or '' }}"></div>
             {% elif b.kat_pfad %}{{ b.kat_pfad }}{% else %}<span class="tag warn">ohne Kategorie</span>{% endif %}
             {% if not teile %}{{ quelle(b) }}{% endif %}
             {% if b.ruecklage_name %}<span class="quelle">aus Rücklage „{{ b.ruecklage_name }}“</span>{% endif %}</td>
-          <td class="leise sp-neben">{{ b.person_name or '' }}</td>
+          <td class="leise sp-neben">{% if darf_schreiben %}<div class="inline-feld" data-bid="{{ b.id }}" data-feld="person"><select class="inline-eingabe" aria-label="Person"><option value="">–</option>{% for p in personen %}<option value="{{ p.id }}" {{ 'selected' if b.person_id == p.id }}>{{ p.name }}</option>{% endfor %}</select></div>{% else %}{{ b.person_name or '' }}{% endif %}</td>
+          <td class="sp-neben sp-tags">{% if darf_schreiben %}<div class="inline-feld" data-bid="{{ b.id }}" data-feld="tags"><input type="text" class="inline-eingabe" list="tagliste" value="{{ (tags_je.get(b.id) or [])|map(attribute='name')|join(', ') }}" placeholder="–" autocomplete="off" aria-label="Tags"></div>{% else %}{{ tagliste(tags_je.get(b.id)) }}{% endif %}</td>
           <td class="betrag {{ 'pos' if b.betrag_cent > 0 }}" style="{{ 'color:#56625D' if b.ist_umbuchung }}">{{ b.betrag_cent|euro_vz }}</td>
         </tr>
       {% else %}
-        <tr><td colspan="8" class="leer">Keine Buchungen für diese Auswahl.</td></tr>
+        <tr><td colspan="9" class="leer">Keine Buchungen für diese Auswahl.</td></tr>
       {% endfor %}
       </tbody>
     </table></div>

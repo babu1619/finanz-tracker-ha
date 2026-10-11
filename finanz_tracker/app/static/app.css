@@ -133,10 +133,68 @@ button[disabled], .btn[disabled] { opacity: .5; cursor: not-allowed; }
 .auth .karte { display: flex; flex-direction: column; gap: 14px; }
 footer.fuss { text-align: center; font-size: 12px; color: var(--quiet); padding: 0 0 24px; }
 
-.buchungstab { min-width: 860px; }
+.buchungstab { min-width: 1080px; }
 .tabfuss { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding: 10px 18px; background: #F7F8F6; border-top: 2px solid var(--line); font-size: 13px; }
 .tabfuss .betrag { white-space: normal; }
 .nur-handy { display: none; }
+
+/* Fixierte erste Spalte und Stift-Button */
+table.tab th.fix-links, table.tab td.fix-links { position: sticky; left: 0; z-index: 2; background: var(--card); box-shadow: 1px 0 0 var(--line), 6px 0 8px -6px rgba(0,0,0,.12); }
+table.tab thead th.fix-links { z-index: 3; }
+table.tab tr.sel td.fix-links { background: var(--accent-soft); }
+.mit-stift { display: flex; align-items: flex-start; gap: 10px; }
+a.stift { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; border: 1px solid #C9D1CD; border-radius: 8px; color: var(--ink2); background: #fff; }
+a.stift:hover { color: var(--accent-dark); border-color: var(--accent); background: var(--accent-soft); }
+
+/* Spaltenköpfe: Sortieren und Filtern */
+.kopfzelle { display: flex; align-items: center; gap: 4px; }
+.kopfzelle.rechtsbuendig { justify-content: flex-end; }
+a.sortlink { color: var(--quiet); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 4px 2px; border-radius: 4px; }
+a.sortlink:hover { color: var(--ink); }
+a.sortlink.aktiv { color: var(--ink); font-weight: 600; }
+a.sortlink .pfeil { font-size: 10px; opacity: .55; }
+a.sortlink.aktiv .pfeil { opacity: 1; color: var(--accent); }
+details.spaltenfilter > summary { list-style: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 5px; color: #9AA59F; cursor: pointer; }
+details.spaltenfilter > summary::-webkit-details-marker { display: none; }
+details.spaltenfilter > summary:hover, details.spaltenfilter[open] > summary { background: var(--line2); color: var(--ink); }
+details.spaltenfilter.aktiv > summary { color: var(--accent); }
+.filter-pop { position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 10px; padding: 14px; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,.16); text-align: left; white-space: normal; font-weight: 400; color: var(--ink); }
+.filter-pop input, .filter-pop select { width: 100%; }
+.filter-pop .formreihe > label.feld { flex: 1 1 100px; }
+.chips.filterchips { align-items: center; }
+.chips.filterchips a { min-height: 32px; font-size: 13px; background: var(--accent-soft); border-color: var(--accent-tint); color: var(--accent-dark); gap: 6px; }
+.chips.filterchips a.leise { background: none; border: none; color: var(--quiet); text-decoration: underline; }
+
+/* Direkte Bearbeitung in Tabellen */
+.inline-feld { position: relative; }
+.inline-eingabe { width: 100%; min-width: 120px; min-height: 32px !important; padding: 0 6px !important; border: 1px solid transparent !important; border-radius: 6px; background: transparent !important; font-size: 13px !important; color: var(--ink); text-overflow: ellipsis; }
+select.inline-eingabe { -webkit-appearance: none; appearance: none; cursor: pointer; }
+tr:hover .inline-eingabe, .inline-eingabe:focus { border-color: #C9D1CD !important; background: #fff !important; }
+.inline-eingabe:focus { outline: 2px solid var(--accent-tint); }
+.inline-eingabe.leer::placeholder { color: var(--warn); }
+.inline-feld.laedt .inline-eingabe { opacity: .5; }
+.inline-feld.ok .inline-eingabe { border-color: var(--accent) !important; background: var(--accent-soft) !important; }
+.inline-feld.fehler .inline-eingabe { border-color: var(--bad) !important; background: var(--bad-bg) !important; }
+.buchungstab td.sp-kat { min-width: 210px; }
+.buchungstab td.sp-tags { min-width: 140px; }
+
+/* Umschalter (Einzeln/Tabelle, Ausgabe/Umbuchung) */
+.umschalter { display: inline-flex; border: 1px solid #C9D1CD; border-radius: 8px; overflow: hidden; background: #fff; }
+.umschalter a, .umschalter label { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; color: var(--ink); text-decoration: none; font-size: 14px; cursor: pointer; }
+.umschalter a + a, .umschalter label + label { border-left: 1px solid #C9D1CD; }
+.umschalter a.an, .umschalter label.an { background: var(--ink); color: #fff; }
+.umschalter.gross { display: flex; }
+.umschalter.gross label { flex: 1; justify-content: center; min-height: 44px; }
+.umschalter.gross input { position: absolute; opacity: 0; pointer-events: none; }
+.umschalter.gross label:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
+.chip-knopf { min-height: 30px; padding: 0 12px; border-radius: 15px; border: 1px dashed var(--accent); background: var(--accent-soft); color: var(--accent-dark); font: inherit; font-size: 13px; cursor: pointer; }
+.klein-chips { align-items: center; }
+
+/* Prüf-Tabelle */
+.pruef-tab { min-width: 1100px; }
+.pruef-tab td { vertical-align: middle; }
+.pruef-tab input[type=text], .pruef-tab select { min-height: 34px; font-size: 13px; width: 100%; }
+.massen { position: sticky; top: 64px; z-index: 5; box-shadow: 0 4px 12px rgba(0,0,0,.06); }
 
 /* Einklappbare Bereiche */
 details.klappe { padding: 0; }
@@ -190,6 +248,10 @@ header.top .plus { display: inline-flex; align-items: center; justify-content: c
 .betrag-eingabe { font-family: "IBM Plex Mono", monospace; font-size: 28px !important; min-height: 60px !important; text-align: right; }
 
 @media (max-width: 720px) {
+  .massen { position: static; }
+  .buchungstab .spaltenfilter { display: none; }
+  .buchungstab .kopfzelle { flex-wrap: wrap; }
+  .buchungstab a.sortlink { gap: 2px; padding: 2px 0; }
   .buchungstab { min-width: 0; width: 100%; }
   .buchungstab th.sp-check { width: 34px; } .buchungstab th.sp-datum { width: 52px; } .buchungstab thead th:last-child { width: 92px; }
   .buchungstab td { overflow-wrap: break-word; }

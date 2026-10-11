@@ -1,0 +1,19 @@
+{% from "_makros.html" import csrf with context %}
+{% if vorschlaege %}
+<section class="karte" id="umbuchungen">
+  <h2>Umbuchungen bestätigen ({{ vorschlaege|length }})</h2>
+  <div style="display:flex;flex-direction:column;gap:10px">
+  {% for v in vorschlaege %}
+    <div class="formreihe" style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;align-items:center">
+      <div style="flex:1 1 240px"><span class="leise">{{ v.a_konto }} · {{ v.a_datum|datum }}</span><br><b>{{ v.a_partei or v.a_zweck|truncate(40) }}</b> <span class="mono">{{ v.a_betrag|euro_vz }}</span></div>
+      <span aria-hidden="true">⇄</span>
+      <div style="flex:1 1 240px"><span class="leise">{{ v.b_konto }} · {{ v.b_datum|datum }}</span><br><b>{{ v.b_partei or v.b_zweck|truncate(40) }}</b> <span class="mono pos">{{ v.b_betrag|euro_vz }}</span></div>
+      <span class="tag">Wahrscheinlichkeit {{ (v.score * 100)|round|int }} %</span>
+      <form method="post" action="{{ url_for('pruefen.umbuchung', vid=v.vid) }}" class="formreihe">{{ csrf() }}
+        <button class="btn primaer klein" name="aktion" value="bestaetigen">Verknüpfen</button>
+        <button class="btn klein" name="aktion" value="ablehnen">Keine Umbuchung</button></form>
+    </div>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}

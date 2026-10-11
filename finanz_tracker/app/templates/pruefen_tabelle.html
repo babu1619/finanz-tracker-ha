@@ -1,0 +1,63 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Prüf-Modus · Tabelle{% endblock %}
+{% block inhalt %}
+<div class="kopf">
+  <h1>Prüf-Modus</h1>
+  <span class="leise">{{ gesamt }} offene Buchungen{% if gesamt > max %}, die ersten {{ max }} angezeigt{% endif %}</span>
+  <div class="rechts">
+    <div class="umschalter" role="group" aria-label="Ansicht"><a href="{{ url_for('pruefen.index', ansicht='einzeln') }}">Einzeln</a><a class="an" href="{{ url_for('pruefen.index', ansicht='tabelle') }}">Tabelle</a></div>
+  </div>
+</div>
+
+{% include "_umbuchung_vorschlaege.html" %}
+
+{% if not rows %}
+<div class="karte leer"><h2>Alles erledigt</h2><p>Keine offenen Buchungen. Neue kommen mit dem nächsten Import.</p></div>
+{% else %}
+<datalist id="kat-liste">{% for k in kategorien %}<option value="{{ k.pfad }}" data-id="{{ k.id }}"></option>{% endfor %}</datalist>
+<datalist id="tag-liste">{% for t in alle_tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
+
+<form method="post" action="{{ url_for('pruefen.tabelle_speichern') }}" id="pruef-tabelle">
+  {{ csrf() }}
+  <div class="karte massen">
+    <div class="kopf"><h2 style="margin:0">Für ausgewählte Zeilen setzen</h2><span id="auswahl-zahl" class="leise">keine ausgewählt</span></div>
+    <div class="formreihe" style="margin-top:10px">
+      <label class="feld" style="flex:2 1 240px">Kategorie<input type="text" class="kat-eingabe" data-massen="kat" list="kat-liste" placeholder="Pfad tippen" autocomplete="off"><input type="hidden" class="kat-id"></label>
+      <label class="feld">Person<select data-massen="person"><option value="">– nicht ändern –</option><option value="0">– keine –</option>{% for p in personen %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></label>
+      <label class="feld">Tags<input type="text" data-massen="tags" list="tag-liste" placeholder="ergänzen, z. B. Steuer 2026" autocomplete="off"></label>
+      <label class="feld">Umbuchung<select data-massen="gegen"><option value="">– nicht ändern –</option><option value="kein">keine Umbuchung</option>{% for k in gegenkonten %}<option value="{{ k.id }}">an/von {{ k.name }}</option>{% endfor %}<option value="extern">Konto außerhalb</option></select></label>
+      <button class="btn" type="button" id="massen-anwenden">Auf Auswahl anwenden</button>
+    </div>
+    <div class="formreihe" style="margin-top:10px;align-items:center">
+      <button class="btn klein" type="button" id="alle-mit-vorschlag">Alle mit Vorschlag auswählen</button>
+      <span class="leise">Felder lassen sich auch einzeln in jeder Zeile ändern. Gespeichert werden nur angehakte Zeilen.</span>
+      <button class="btn primaer rechts" type="submit">Ausgewählte speichern</button>
+    </div>
+  </div>
+
+  <div class="karte ohne-rand">
+    <div class="scroll"><table class="tab pruef-tab">
+      <thead><tr><th class="fix-links" style="width:36px"><input type="checkbox" id="alle" aria-label="Alle auswählen"></th><th>Datum</th><th>Gegenpartei · Verwendungszweck</th><th style="text-align:right">Betrag</th>
+        <th style="min-width:230px">Kategorie</th><th>Person</th><th style="min-width:160px">Tags</th><th>Umbuchung</th></tr></thead>
+      <tbody>
+      {% for r in rows %}{% set b = r.b %}{% set v = r.vorschlag %}
+        <tr data-vorschlag="{{ 1 if v else 0 }}">
+          <td class="fix-links"><input type="checkbox" name="ids" value="{{ b.id }}" aria-label="Zeile auswählen"></td>
+          <td class="mono" style="white-space:nowrap;font-size:13px">{{ b.buchungsdatum|datum }}<div class="leise" style="font-family:inherit">{{ b.konto_name }}</div></td>
+          <td><a href="{{ url_for('buchungen.bearbeiten', bid=b.id, zurueck=url_for('pruefen.index')) }}" style="color:inherit;text-decoration:none"><b>{{ b.gegenpartei or '–' }}</b></a><div class="leise">{{ b.verwendungszweck|truncate(70) }}</div></td>
+          <td class="betrag {{ 'pos' if b.betrag_cent > 0 }}">{{ b.betrag_cent|euro_vz }}</td>
+          <td>{% set pfad = (kategorien|selectattr('id', 'equalto', v.kategorie_id)|map(attribute='pfad')|first) if v else '' %}
+            <input type="text" class="kat-eingabe" list="kat-liste" value="{{ pfad or '' }}" placeholder="Kategorie" autocomplete="off" aria-label="Kategorie">
+            <input type="hidden" class="kat-id" name="kat_{{ b.id }}" value="{{ v.kategorie_id if v else '' }}">
+            {% if v %}<div class="quelle">{{ {'gedaechtnis':'aus früheren Buchungen','modell':'Lernmodell','regel':'Regel'}.get(v.quelle, 'bisher') }}{% if v.konfidenz and v.quelle == 'modell' %} · {{ (v.konfidenz * 100)|round|int }} %{% endif %}</div>{% endif %}</td>
+          <td><select name="person_{{ b.id }}" data-feld="person" aria-label="Person"><option value="">–</option>{% for p in personen %}<option value="{{ p.id }}" {{ 'selected' if (v.person_id if v else b.person_id) == p.id }}>{{ p.name }}</option>{% endfor %}</select></td>
+          <td><input type="text" name="tags_{{ b.id }}" data-feld="tags" value="{{ r.tags }}" list="tag-liste" placeholder="Tags" autocomplete="off" aria-label="Tags"></td>
+          <td><select name="gegen_{{ b.id }}" data-feld="gegen" aria-label="Umbuchung"><option value="">nein</option>{% for k in gegenkonten if k.id != b.konto_id %}<option value="{{ k.id }}">{{ k.name }}</option>{% endfor %}<option value="extern">außerhalb</option></select></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

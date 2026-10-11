@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% from "_makros.html" import stift with context %}
 {% block titel %}Konten{% endblock %}
 {% block inhalt %}
 <div class="kopf">
@@ -8,23 +8,23 @@
 </div>
 <section class="karte ohne-rand">
   <div class="scroll"><table class="tab" style="min-width:820px">
-    <thead><tr><th>Konto</th><th>Typ</th><th>Importprofil</th><th>Sichtbar für</th><th>Letzter Import</th><th style="text-align:right">Buchungen</th><th style="text-align:right">Saldo</th><th></th></tr></thead>
+    <thead><tr><th class="fix-links">Konto</th><th>Typ</th><th>Importprofil</th><th>Sichtbar für</th><th>Letzter Import</th><th style="text-align:right">Buchungen</th><th style="text-align:right">Saldo</th></tr></thead>
     <tbody>
     {% for r in rows %}
       <tr style="{{ 'opacity:.55' if not r.k.aktiv }}">
-        <td><b>{{ r.k.name }}</b>{% if r.k.iban %}<div class="leise mono klein">{{ r.k.iban }}</div>{% endif %}</td>
+        <td class="fix-links"><div class="mit-stift">{% if user.rolle == 'admin' %}{{ stift(url_for('konten.bearbeiten', kid=r.k.id), 'Konto bearbeiten') }}{% endif %}
+          <div><b>{{ r.k.name }}</b>{% if r.k.iban %}<div class="leise mono klein">{{ r.k.iban }}</div>{% endif %}</div></div></td>
         <td>{{ typen[r.k.typ] }}{% if r.k.typ == 'darlehen' %}<br><a class="klein" href="{{ url_for('darlehen.detail', kid=r.k.id) }}">Plan &amp; Simulation</a>{% endif %}</td>
         <td>{% if r.k.profil_name %}{{ r.k.profil_name }}{% else %}<span class="tag warn">keins</span>{% endif %}</td>
         <td class="leise">{{ 'alle' if r.k.sichtbarkeit == 'alle' else 'nur ' ~ (r.k.eigentuemer or 'Eigentümer') }}</td>
         <td class="leise">{{ r.letzter.zeitpunkt|datum if r.letzter else 'noch nie' }}{% if r.letzter and r.letzter.saldo_differenz_cent %} <span class="tag bad">Saldo weicht ab</span>{% endif %}</td>
         <td class="betrag" style="font-weight:400">{{ r.anzahl }}</td>
         <td class="betrag">{{ r.saldo|euro }}</td>
-        <td>{% if user.rolle == 'admin' %}<a href="{{ url_for('konten.bearbeiten', kid=r.k.id) }}">Bearbeiten</a>{% endif %}</td>
       </tr>
     {% else %}
-      <tr><td colspan="8" class="leer">Noch keine Konten.{% if user.rolle == 'admin' %} <a href="{{ url_for('konten.neu') }}">Erstes Konto anlegen</a>{% endif %}</td></tr>
+      <tr><td colspan="7" class="leer">Noch keine Konten.{% if user.rolle == 'admin' %} <a href="{{ url_for('konten.neu') }}">Erstes Konto anlegen</a>{% endif %}</td></tr>
     {% endfor %}
     </tbody></table></div>
 </section>
-<p class="leise klein">Darlehenskonten bilden einen eigenen Bereich: Sie zählen nicht zum Vermögen und nicht ins Dashboard; Zahlungen an sie sind Ausgaben, keine Umbuchungen. Das Darlehens-Dashboard folgt in einer späteren Version.</p>
+<p class="leise klein">Darlehenskonten bilden einen eigenen Bereich: Sie zählen nicht zum Vermögen und nicht ins Dashboard; Zahlungen an sie sind Ausgaben, keine Umbuchungen. Tilgungsplan und Simulation findest du im Bereich <a href="{{ url_for('darlehen.index') }}">Darlehen</a>.</p>
 {% endblock %}

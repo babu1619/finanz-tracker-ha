@@ -221,6 +221,7 @@ class Ablauf(unittest.TestCase):
 
         # 10b. Version 0.2: Aufteilung, Verteilung, Tags, Budgets, Rücklagen, Darlehen, Auswertung, Schnellerfassung
         self._phase34(db, markt, kat_lebensmittel)
+        self._v03(db, kat_lebensmittel)
 
         # 11. Import rückgängig
         lauf = db.execute("SELECT id FROM importlauf WHERE anzahl_neu = 2").fetchone()["id"]
@@ -409,6 +410,102 @@ class Ablauf(unittest.TestCase):
         self.assertIn("Sicherung wiederhergestellt", html)
         self.assertEqual(db.execute("SELECT name FROM konto WHERE id = 1").fetchone()["name"], "Girokonto")
         self.post("/login", {"name": "benjamin", "passwort": "geheim123"})
+
+    def _v03(self, db, kat_lebensmittel):
+        """0.3.0: Konten-Tabelle, Inline-Bearbeitung, Sortieren/Filtern, Prüf-Modus mit Tags/Gegenkonto/Tabelle."""
+        import json
+        from app.services import umbuchungen
+        html = self.get("/konten/")
+        self.assertIn('class="stift"', html)
+        self.assertIn('fix-links', html)
+
+        # Sortieren und Spaltenfilter
+        html = self.get("/buchungen/?monat=alle&sort=betrag")
+        self.assertLess(html.index("MUSTERBANK DARLEHEN"), html.index("STREAMING DIENST"))
+        html = self.get("/buchungen/?monat=alle&sort=-betrag")
+        self.assertLess(html.index("ARBEITGEBER"), html.index("MUSTERBANK DARLEHEN"))
+        html = self.get("/buchungen/?monat=alle&partei=supermarkt")
+        self.assertIn("SUPERMARKT", html)
+        self.assertNotIn(">ARBEITGEBER", html)
+        self.assertIn("Gegenpartei enthält", html)  # Filter-Chip
+        html = self.get("/buchungen/?monat=alle&min=500&richtung=aus")
+        self.assertIn("MUSTERBANK DARLEHEN", html)
+        self.assertNotIn("SUPERMARKT", html.split("<tbody>")[1])
+        self.get("/buchungen/?monat=alle&sort=tags")
+        self.get("/buchungen/?monat=alle&von=2026-10-01&bis=2026-10-31&sort=kategorie")
+
+        # Direkte Bearbeitung in der Tabelle
+        gehalt = db.execute("SELECT id FROM buchung WHERE gegenpartei LIKE 'ARBEITGEBER%'").fetchone()["id"]
+        kat_sonst = db.execute("SELECT id FROM kategorie WHERE name = 'Sonstiges'").fetchone()["id"]
+        self.get("/buchungen/?monat=alle")
+
+        def inline(bid, feld, wert, ok=200):
+            r = self.c.post(f"/buchungen/{bid}/inline", data=json.dumps({"feld": feld, "wert": wert}),
+                            content_type="application/json", headers={"X-CSRF": self._csrf})
+            self.assertEqual(r.status_code, ok, r.get_data(as_text=True))
+            return r.get_json()
+        self.assertEqual(inline(gehalt, "kategorie", str(kat_sonst))["anzeige"], "Sonstiges")
+        self.assertEqual(db.execute("SELECT kategorie_id, zuordnung_quelle FROM buchung WHERE id = ?", (gehalt,)).fetchone()[:],
+                         (kat_sonst, "manuell"))
+        self.assertEqual(inline(gehalt, "tags", "Steuer 2026, Arbeit")["anzeige"], "Arbeit, Steuer 2026")
+        pid = db.execute("SELECT id FROM person LIMIT 1").fetchone()["id"]
+        self.assertEqual(inline(gehalt, "person", str(pid))["anzeige"], "Benjamin")
+        inline(gehalt, "feld_gibt_es_nicht", "x", ok=400)
+        markt_split = db.execute("SELECT buchung_id FROM buchung_split LIMIT 1").fetchone()["buchung_id"]
+        inline(markt_split, "kategorie", str(kat_sonst), ok=400)  # aufgeteilt -> nur in der Buchung
+        r = self.c.post(f"/buchungen/{gehalt}/inline", data=json.dumps({"feld": "tags", "wert": "x"}),
+                        content_type="application/json")
+        self.assertEqual(r.status_code, 400)  # ohne CSRF-Token
+        html = self.get("/buchungen/?monat=alle&sort=tags")
+        self.assertIn('data-feld="tags"', html)
+        self.assertIn("Arbeit, Steuer 2026", html)
+        self.assertIn("STREAMING DIENST", html)
+
+        # Prüf-Modus: Umbuchung mit Gegenkonto, Gegenbuchung folgt später
+        offen = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, "
+                           "partner_key, abrechnungsmonat, dedup_hash) VALUES (1, '2026-10-05', -30000, 'Benjamin Muster', "
+                           "'Rücklage', 'benjamin muster', '2026-10', 'v03-a')").lastrowid
+        db.commit()
+        html = self.get("/pruefen/?ansicht=einzeln")
+        self.assertIn("Gegenkonto", html)
+        self.assertIn('name="tags"', html)
+        html = self.post(f"/pruefen/{offen}", {"art": "umbuchung", "gegenkonto": "2", "tags": "Sparen",
+                                               "abrechnungsmonat": "2026-10"}, von="/pruefen/")
+        self.assertIn("beim nächsten Import des Gegenkontos", html)
+        b = db.execute("SELECT ist_umbuchung, umbuchung_konto_id, umbuchung_partner_id FROM buchung WHERE id = ?", (offen,)).fetchone()
+        self.assertEqual(tuple(b), (1, 2, None))
+        self.assertEqual(db.execute("SELECT t.name FROM buchung_tag bt JOIN tag t ON t.id = bt.tag_id WHERE bt.buchung_id = ?",
+                                    (offen,)).fetchone()["name"], "Sparen")
+        gegen = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, "
+                           "partner_key, abrechnungsmonat, dedup_hash) VALUES (2, '2026-10-06', 30000, 'Gutschrift', '', "
+                           "'gutschrift', '2026-10', 'v03-b')").lastrowid
+        db.commit()
+        with self.app.app_context():
+            from app.db import commit
+            umbuchungen.erkenne([gegen])
+            commit()
+        self.assertEqual(db.execute("SELECT umbuchung_partner_id FROM buchung WHERE id = ?", (offen,)).fetchone()[0], gegen)
+        self.assertIn("Umbuchung mit Tagesgeld", self.get(f"/buchungen/{offen}"))
+
+        # Prüf-Modus als Tabelle: Massenbearbeitung
+        a = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                       "abrechnungsmonat, dedup_hash) VALUES (1, '2026-10-07', -1200, 'KIOSK', '', 'kiosk', '2026-10', 'v03-c')").lastrowid
+        c2 = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                        "abrechnungsmonat, dedup_hash) VALUES (1, '2026-10-08', -900, 'KIOSK 2', '', 'kiosk', '2026-10', 'v03-d')").lastrowid
+        db.commit()
+        html = self.get("/pruefen/?ansicht=tabelle")
+        self.assertIn("Für ausgewählte Zeilen setzen", html)
+        self.assertIn(f'name="kat_{a}"', html)
+        html = self.post("/pruefen/tabelle", {"ids": [str(a), str(c2)], f"kat_{a}": str(kat_lebensmittel), f"tags_{a}": "Kiosk",
+                                              f"person_{a}": "", f"gegen_{a}": "", f"kat_{c2}": "", f"gegen_{c2}": "extern"},
+                         von="/pruefen/")
+        self.assertIn("1 zugeordnet", html)
+        self.assertEqual(db.execute("SELECT kategorie_id, geprueft FROM buchung WHERE id = ?", (a,)).fetchone()[:], (kat_lebensmittel, 1))
+        self.assertEqual(db.execute("SELECT ist_umbuchung, umbuchung_konto_id FROM buchung WHERE id = ?", (c2,)).fetchone()[:], (1, None))
+        self.get("/pruefen/?ansicht=einzeln")
+        for x in ("v03-a", "v03-b", "v03-c", "v03-d"):
+            db.execute("DELETE FROM buchung WHERE dedup_hash = ?", (x,))
+        db.commit()
 
     def test_csrf(self):
         r = self.c.post("/login", data={"name": "x", "passwort": "y"})

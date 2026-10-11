@@ -64,6 +64,39 @@ def verknuepfe(a_id, b_id, benutzer_id=None):
         (a_id, b_id, a_id, b_id))
 
 
+def markiere(b, gegenkonto_id: int | None) -> str:
+    """Buchung manuell als Umbuchung markieren (Prüf-Modus).
+
+    Mit Gegenkonto: passende Gegenbuchung dort suchen (gleicher Betrag mit umgekehrtem Vorzeichen, ±10 Tage) und
+    verknüpfen. Gibt es sie noch nicht, wird das Gegenkonto gemerkt; beim späteren Import wird automatisch verknüpft.
+    Ohne Gegenkonto: Umbuchung an ein Konto außerhalb des Tools (z. B. Depot).
+    Rückgabe: 'verknuepft', 'vorgemerkt' oder 'extern'.
+    """
+    if gegenkonto_id:
+        partner = q1("""SELECT * FROM buchung WHERE konto_id = ? AND betrag_cent = ? AND ist_umbuchung = 0
+                        AND umbuchung_partner_id IS NULL AND abs(julianday(buchungsdatum) - julianday(?)) <= 10
+                        ORDER BY abs(julianday(buchungsdatum) - julianday(?)) LIMIT 1""",
+                     (gegenkonto_id, -b["betrag_cent"], b["buchungsdatum"], b["buchungsdatum"]))
+        if partner:
+            ab, an = (b["id"], partner["id"]) if b["betrag_cent"] < 0 else (partner["id"], b["id"])
+            verknuepfe(ab, an)
+            return "verknuepft"
+    uk = kategorien.umbuchung_kategorie_id()
+    exe("UPDATE buchung SET ist_umbuchung = 1, umbuchung_partner_id = NULL, umbuchung_konto_id = ?, kategorie_id = ?, "
+        "zuordnung_quelle = 'umbuchung', geprueft = 1, regel_id = NULL, vorschlag_kategorie_id = NULL WHERE id = ?",
+        (gegenkonto_id, uk, b["id"]))
+    exe("DELETE FROM umbuchung_vorschlag WHERE buchung_a_id = ? OR buchung_b_id = ?", (b["id"], b["id"]))
+    return "vorgemerkt" if gegenkonto_id else "extern"
+
+
+def _vorgemerkte_partner(b):
+    """Früher als Umbuchung markierte Buchung, die genau auf diese Gegenbuchung wartet."""
+    return q1("""SELECT * FROM buchung WHERE ist_umbuchung = 1 AND umbuchung_partner_id IS NULL
+                 AND umbuchung_konto_id = ? AND betrag_cent = ? AND abs(julianday(buchungsdatum) - julianday(?)) <= 10
+                 ORDER BY abs(julianday(buchungsdatum) - julianday(?)) LIMIT 1""",
+              (b["konto_id"], -b["betrag_cent"], b["buchungsdatum"], b["buchungsdatum"]))
+
+
 def loese(buchung_id):
     b = q1("SELECT * FROM buchung WHERE id = ?", (buchung_id,))
     if not b:
@@ -71,7 +104,7 @@ def loese(buchung_id):
     ids = [b["id"]] + ([b["umbuchung_partner_id"]] if b["umbuchung_partner_id"] else [])
     for i in ids:
         exe("UPDATE buchung SET ist_umbuchung = 0, umbuchung_partner_id = NULL, kategorie_id = NULL, "
-            "zuordnung_quelle = NULL, geprueft = 0 WHERE id = ?", (i,))
+            "zuordnung_quelle = NULL, geprueft = 0, umbuchung_konto_id = NULL WHERE id = ?", (i,))
 
 
 def erkenne(buchung_ids: list[int]) -> dict:
@@ -87,6 +120,12 @@ def erkenne(buchung_ids: list[int]) -> dict:
             continue
         b = q1("SELECT * FROM buchung WHERE id = ?", (b["id"],))
         if b["ist_umbuchung"]:
+            continue
+        wartend = _vorgemerkte_partner(b)
+        if wartend:
+            ab, an = (b, wartend) if b["betrag_cent"] < 0 else (wartend, b)
+            verknuepfe(ab["id"], an["id"])
+            stat["auto"] += 1
             continue
         kand = kandidaten(b, konten)
         if not kand:

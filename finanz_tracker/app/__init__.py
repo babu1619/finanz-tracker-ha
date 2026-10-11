@@ -76,6 +76,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         datum=util.datum_de,
         monat=util.monat_name,
         monat_kurz=util.monat_kurz,
+        dict_ohne=lambda d, schluessel: {k: v for k, v in d.items() if k not in schluessel},
     )
 
     from .views import (auth_views, dashboard, buchungen, pruefen, kategorien, regeln, konten, importe, admin,

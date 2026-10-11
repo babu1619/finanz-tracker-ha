@@ -10,7 +10,7 @@
     <p>{{ b.verwendungszweck }}</p>
     {% if b.gegen_iban %}<p class="leise">Gegen-IBAN {{ b.gegen_iban }}</p>{% endif %}
     {% if b.ist_umbuchung %}
-      <div class="flash ok">Umbuchung{% if partner %} mit {{ partner.konto_name }} am {{ partner.buchungsdatum|datum }} ({{ partner.betrag_cent|euro_vz }}){% else %} an ein Konto außerhalb des Tools{% endif %}.
+      <div class="flash ok">Umbuchung{% if partner %} mit {{ partner.konto_name }} am {{ partner.buchungsdatum|datum }} ({{ partner.betrag_cent|euro_vz }}){% elif b.umbuchung_konto_name %} mit {{ b.umbuchung_konto_name }} – die Gegenbuchung wird beim nächsten Import dieses Kontos automatisch verknüpft{% else %} an ein Konto außerhalb des Tools{% endif %}.
       {% if darf_schreiben %}<form method="post" style="display:inline">{{ csrf() }}<input type="hidden" name="aktion" value="umbuchung_loesen"><input type="hidden" name="zurueck" value="{{ zurueck }}"><button class="btn klein" type="submit">Verknüpfung lösen</button></form>{% endif %}</div>
     {% endif %}
     <p class="leise">Zuordnung: {{ quelle(b) or 'noch keine' }}</p>

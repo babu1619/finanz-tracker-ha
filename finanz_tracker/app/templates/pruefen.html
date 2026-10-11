@@ -4,27 +4,13 @@
 <div class="kopf">
   <h1>Prüf-Modus</h1>
   {% if b %}<span class="leise">{{ position }} von {{ gesamt }} offenen Buchungen</span>{% endif %}
-  <form method="post" action="{{ url_for('pruefen.neustart') }}" class="rechts">{{ csrf() }}<button class="btn klein" type="submit">Übersprungene wieder anzeigen</button></form>
+  <div class="rechts">
+    <div class="umschalter" role="group" aria-label="Ansicht"><a class="an" href="{{ url_for('pruefen.index', ansicht='einzeln') }}">Einzeln</a><a href="{{ url_for('pruefen.index', ansicht='tabelle') }}">Tabelle</a></div>
+    <form method="post" action="{{ url_for('pruefen.neustart') }}">{{ csrf() }}<button class="btn klein" type="submit">Übersprungene wieder anzeigen</button></form>
+  </div>
 </div>
 
-{% if vorschlaege %}
-<section class="karte" id="umbuchungen">
-  <h2>Umbuchungen bestätigen ({{ vorschlaege|length }})</h2>
-  <div style="display:flex;flex-direction:column;gap:10px">
-  {% for v in vorschlaege %}
-    <div class="formreihe" style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;align-items:center">
-      <div style="flex:1 1 240px"><span class="leise">{{ v.a_konto }} · {{ v.a_datum|datum }}</span><br><b>{{ v.a_partei or v.a_zweck|truncate(40) }}</b> <span class="mono">{{ v.a_betrag|euro_vz }}</span></div>
-      <span aria-hidden="true">⇄</span>
-      <div style="flex:1 1 240px"><span class="leise">{{ v.b_konto }} · {{ v.b_datum|datum }}</span><br><b>{{ v.b_partei or v.b_zweck|truncate(40) }}</b> <span class="mono pos">{{ v.b_betrag|euro_vz }}</span></div>
-      <span class="tag">Wahrscheinlichkeit {{ (v.score * 100)|round|int }} %</span>
-      <form method="post" action="{{ url_for('pruefen.umbuchung', vid=v.vid) }}" class="formreihe">{{ csrf() }}
-        <button class="btn primaer klein" name="aktion" value="bestaetigen">Verknüpfen</button>
-        <button class="btn klein" name="aktion" value="ablehnen">Keine Umbuchung</button></form>
-    </div>
-  {% endfor %}
-  </div>
-</section>
-{% endif %}
+{% include "_umbuchung_vorschlaege.html" %}
 
 {% if not b %}
 <div class="karte leer"><h2>Alles erledigt</h2><p>Keine offenen Buchungen. Neue kommen mit dem nächsten Import.</p></div>
@@ -39,17 +25,35 @@
         <div class="rechts mono" style="font-size:28px;font-weight:600">{{ b.betrag_cent|euro_vz }}</div></div>
     </div>
     <div class="karte pruefkarte">
+      <div class="umschalter gross" role="radiogroup" aria-label="Art der Buchung">
+        <label><input type="radio" name="art" value="kategorie" checked data-art> Ausgabe/Einnahme</label>
+        <label><input type="radio" name="art" value="umbuchung" data-art> Umbuchung</label>
+      </div>
+      <div data-art-fuer="kategorie" class="pruefkarte">
       {% if vorschlag and vorschlag_pfad %}
       <div class="vorschlag"><div style="flex:1"><div class="leise">{% if vorschlag.quelle == 'gedaechtnis' %}Vorschlag aus {{ vorschlag.anzahl or 'früheren' }} ähnlichen Buchungen{% elif vorschlag.quelle == 'regel' %}Von einer Regel gesetzt{% elif vorschlag.quelle == 'modell' %}Vorschlag des Lernmodells{% if vorschlag.konfidenz %} · {{ (vorschlag.konfidenz * 100)|round|int }} % sicher{% endif %}{% else %}Bisherige Zuordnung{% endif %}</div>
         <b style="font-size:17px">{{ vorschlag_pfad }}</b></div><span class="leise klein">Enter übernimmt</span></div>
       {% endif %}
       <label class="feld">Kategorie{{ kat_suche('kategorie_id', kategorien, vorschlag.kategorie_id if vorschlag else None) }}</label>
+      </div>
+      <div data-art-fuer="umbuchung" hidden>
+        <label class="feld">Gegenkonto
+          <select name="gegenkonto">
+            {% for k in gegenkonten %}<option value="{{ k.id }}" {{ 'selected' if k.id == gegen_vorschlag }}>{{ k.name }}</option>{% endfor %}
+            <option value="extern">Konto außerhalb des Tools (z. B. Depot, Konto bei einer anderen Person)</option>
+          </select></label>
+        <p class="leise" style="margin:6px 0 0">{{ 'Abgang' if b.betrag_cent < 0 else 'Eingang' }} von {{ b.betrag_cent|euro }}. Liegt die Gegenbuchung auf dem gewählten Konto schon vor, wird sie verknüpft; sonst geschieht das beim nächsten Import automatisch. Umbuchungen zählen nicht als Ausgabe.</p>
+      </div>
       <div class="formreihe">
         <label class="feld">Person{{ person_select('person_id', personen, vorschlag.person_id if vorschlag else b.person_id) }}</label>
         <label class="feld">Abrechnungsmonat<select name="abrechnungsmonat">{% for m in monate %}<option value="{{ m }}" {{ 'selected' if m == b.abrechnungsmonat }}>{{ m|monat }}{% if m == b.buchungsdatum[:7] %} (Buchungsmonat){% endif %}</option>{% endfor %}</select></label>
       </div>
+      <label class="feld">Tags (mit Komma trennen)<input type="text" name="tags" id="pruef-tags" value="{{ tag_text }}" list="tag-liste" placeholder="optional, z. B. Steuer 2026" autocomplete="off"></label>
+      <datalist id="tag-liste">{% for t in alle_tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
+      {% if tag_vorschlag %}<div class="chips klein-chips">{% for t in tag_vorschlag %}<button type="button" class="chip-knopf" data-tag-plus="{{ t }}">+ {{ t }}</button>{% endfor %}<span class="leise">früher bei dieser Gegenpartei</span></div>{% endif %}
       <div style="background:var(--bg);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
         <label class="check"><input type="checkbox" name="regel" value="1"> Regel erstellen: künftig automatisch so zuordnen, wenn</label>
+        <label class="check klein" data-art-fuer="kategorie"><input type="checkbox" name="regel_tags" value="1"> auch den ersten Tag setzen</label>
         <div class="formreihe">
           <select name="regel_feld" style="flex:0 1 200px"><option value="gegenpartei">Gegenpartei</option><option value="verwendungszweck">Verwendungszweck</option></select>
           <span class="leise">enthält</span>
