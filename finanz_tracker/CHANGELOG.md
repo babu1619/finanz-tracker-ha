@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.4.0 – Oktober 2026
+
+- Dashboard: Klick auf „Einnahmen“ oder „Ausgaben“ zeigt die zugehörigen Buchungen des angezeigten Monats (neuer Filter „Art“ in den Buchungen); Klick auf ein Konto unter „Konten und Importstand“ zeigt dessen Buchungen (Depot und Darlehen öffnen ihre eigene Seite)
+- Dashboard: Unterkategorien unter „Ausgaben nach Kategorie“ lassen sich aufklappen; der Zustand bleibt auf dem Gerät gespeichert
+- Depot: eigene Seite mit Depotwert = gebuchtes Kapital + Rendite. Rendite in % oder € eintragen (mit Verlauf), Einzahlungen, Auszahlungen, Gebühren und Erträge von Hand erfassen. Umbuchungen aus dem Girokonto ins Depot legen die Einzahlung im Depot automatisch an (wie beim Barkonto); bereits vorgemerkte werden beim Update nachgetragen
+- Screenshot-Import: Umsätze aus Screenshots der Banking-App (z. B. Hanseatic-Kreditkarte) per Texterkennung einlesen – lokal auf dem Home Assistant, nichts geht ins Internet. Bilder auswählen, hineinziehen oder aus der Zwischenablage einfügen; Prüftabelle vor dem Speichern, überlappende Screenshots werden zusammengeführt, schon übernommene erkannt, Import rückgängig machbar
+- Umbuchung mit Gegenkonto findet jetzt auch eine dort von Hand erfasste, noch wartende Gegenbuchung
+
 ## 0.3.2 – Oktober 2026
 
 - Umbuchung mit Gegenkonto (inkl. automatischer Gegenbuchung im Barkonto) jetzt auch auf der Detailseite einer Buchung (Umschalter Ausgabe/Umbuchung), direkt in der Buchungstabelle (Kategorie „Umbuchung“ wählen → Gegenkonto auswählen) und als Sammelaktion „Als Umbuchung markieren“

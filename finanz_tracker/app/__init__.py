@@ -80,10 +80,10 @@ def create_app(test_config: dict | None = None) -> Flask:
     )
 
     from .views import (auth_views, dashboard, buchungen, pruefen, kategorien, regeln, konten, importe, admin,
-                        budgets, sparen, darlehen, auswertung, tags, vertraege, erfassen, pwa)
+                        budgets, sparen, darlehen, auswertung, tags, vertraege, erfassen, pwa, depot)
     for bp in (auth_views.bp, dashboard.bp, buchungen.bp, pruefen.bp, kategorien.bp, regeln.bp,
                konten.bp, importe.bp, admin.bp, budgets.bp, sparen.bp, darlehen.bp, auswertung.bp, tags.bp,
-               vertraege.bp, erfassen.bp, pwa.bp):
+               vertraege.bp, erfassen.bp, pwa.bp, depot.bp):
         app.register_blueprint(bp)
 
     @app.errorhandler(400)

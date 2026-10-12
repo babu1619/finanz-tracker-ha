@@ -1,0 +1,83 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_suche with context %}
+{% block titel %}{{ k.name }}{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('konten.liste') }}">‹ Konten</a>
+  <div class="rechts"><a class="btn" href="{{ url_for('buchungen.liste', konto=k.id, monat='alle') }}">Alle Buchungen</a></div></div>
+<div class="kopf"><h1>{{ k.name }}</h1><span class="leise">Depot · ohne Kontoauszug</span></div>
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Depotwert</div><div class="wert">{{ kz.wert|euro_rund }}</div>
+    <div class="unter">gebuchtes Kapital + Rendite</div></div>
+  <div class="kpi"><div class="label">Gebuchtes Kapital</div><div class="wert">{{ kz.kapital|euro_rund }}</div>
+    <div class="unter">{% if kz.start %}Start {{ kz.start|euro_rund }} · {% endif %}ein {{ kz.einzahlungen|euro_rund }} · aus {{ kz.auszahlungen|euro_rund }}</div></div>
+  <div class="kpi"><div class="label">Rendite</div><div class="wert {{ 'pos' if kz.rendite > 0 }}">{{ kz.rendite|euro_rund }}</div>
+    <div class="unter">{% if kz.bewertung %}{% if kz.rendite_prozent is not none %}{{ ('%.1f'|format(kz.rendite_prozent)).replace('.', ',') }} % · {% endif %}Stand {{ kz.bewertung.datum|datum }}{% else %}noch nicht eingetragen{% endif %}</div></div>
+  <div class="kpi"><div class="label">Kosten · Erträge</div><div class="wert">{{ (kz.ertraege - kz.kosten)|euro_rund }}</div>
+    <div class="unter">Kosten {{ kz.kosten|euro_rund }} · Erträge {{ kz.ertraege|euro_rund }}</div></div>
+</div>
+
+{% if darf_schreiben %}
+<div class="reihe">
+  <form method="post" action="{{ url_for('depot.rendite', kid=k.id) }}" class="karte schmal" style="display:flex;flex-direction:column;gap:12px">{{ csrf() }}
+    <h2 style="margin:0">Rendite eintragen</h2>
+    <p class="leise" style="margin:0">Den aktuellen Gewinn oder Verlust aus deiner Depot-App, entweder in Prozent oder in Euro. Prozent beziehen sich auf das gebuchte Kapital.</p>
+    <div class="formreihe">
+      <label class="feld" style="flex:1 1 120px">Wert<input type="text" name="wert" inputmode="decimal" placeholder="z. B. 12,5 oder -3" required autocomplete="off"></label>
+      <label class="feld" style="flex:0 1 110px">Einheit<select name="einheit"><option value="prozent">%</option><option value="betrag">€</option></select></label>
+    </div>
+    <div class="formreihe">
+      <label class="feld">Stand vom<input type="date" name="datum" value="{{ heute }}" style="min-height:40px"></label>
+      <label class="feld">Notiz<input type="text" name="notiz" placeholder="optional"></label>
+    </div>
+    <button class="btn primaer" type="submit">Rendite speichern</button>
+  </form>
+
+  <form method="post" action="{{ url_for('depot.eintrag', kid=k.id) }}" class="karte breit" style="display:flex;flex-direction:column;gap:12px">{{ csrf() }}
+    <h2 style="margin:0">Eintrag erfassen</h2>
+    <div class="formreihe">
+      <label class="feld">Art<select name="art" data-art-wahl>{% for schl, (name, vz) in arten.items() %}<option value="{{ schl }}">{{ name }}</option>{% endfor %}</select></label>
+      <label class="feld">Betrag in €<input type="text" name="betrag" inputmode="decimal" placeholder="0,00" required autocomplete="off"></label>
+      <label class="feld">Datum<input type="date" name="datum" value="{{ heute }}" style="min-height:40px"></label>
+    </div>
+    <div class="formreihe">
+      <label class="feld" data-nur="einzahlung auszahlung">Von/an Konto<select name="gegenkonto"><option value="">außerhalb des Tools</option>{% for g in gegenkonten %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select></label>
+      <label class="feld" data-nur="gebuehr ertrag" hidden>Kategorie{{ kat_suche('kategorie_id', kategorien, None, 'depot-kat') }}</label>
+      <label class="feld">Beschreibung<input type="text" name="gegenpartei" placeholder="z. B. Sparplan, Depotgebühr, Dividende" autocomplete="off"></label>
+    </div>
+    <label class="feld">Notiz<input type="text" name="notiz" placeholder="optional"></label>
+    <div class="formreihe" style="align-items:center">
+      <button class="btn primaer" type="submit">Speichern</button>
+      <span class="leise" style="flex:1 1 260px">Überweisungen aus einem importierten Konto musst du hier nicht eintragen: Wählst du dort Kategorie „Umbuchung“ mit Gegenkonto {{ k.name }}, entsteht die Einzahlung hier automatisch.</span>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<div class="reihe">
+  <section class="karte breit ohne-rand">
+    <div class="kopf" style="padding:16px 16px 0"><h2 style="margin:0">Bewegungen</h2></div>
+    {% if bewegungen %}
+    <div class="scroll"><table class="tab">
+      <thead><tr><th>Datum</th><th>Beschreibung</th><th>Art</th><th style="text-align:right">Betrag</th></tr></thead>
+      <tbody>{% for b in bewegungen %}
+        <tr><td class="mono" style="white-space:nowrap">{{ b.buchungsdatum|datum }}</td>
+          <td><a href="{{ url_for('buchungen.bearbeiten', bid=b.id, zurueck=url_for('depot.detail', kid=k.id)) }}" style="color:inherit"><b>{{ b.gegenpartei or '–' }}</b></a>{% if b.notiz %}<div class="leise">{{ b.notiz }}</div>{% endif %}</td>
+          <td class="leise">{% if b.ist_umbuchung %}Umbuchung{% if b.gegen_name %} {{ 'von' if b.betrag_cent > 0 else 'an' }} {{ b.gegen_name }}{% endif %}{% else %}{{ b.kat_pfad or 'ohne Kategorie' }}{% endif %}</td>
+          <td class="betrag {{ 'pos' if b.betrag_cent > 0 }}">{{ b.betrag_cent|euro_vz }}</td></tr>
+      {% endfor %}</tbody></table></div>
+    {% else %}<p class="leer">Noch keine Bewegungen.</p>{% endif %}
+  </section>
+
+  <section class="karte schmal ohne-rand">
+    <div class="kopf" style="padding:16px 16px 0"><h2 style="margin:0">Rendite-Verlauf</h2></div>
+    {% if bewertungen %}
+    <table class="tab">
+      <tbody>{% for r in bewertungen %}
+        <tr><td class="mono" style="white-space:nowrap">{{ r.datum|datum }}</td>
+          <td class="betrag">{% if r.einheit == 'prozent' %}{{ ('%.2f'|format(r.wert / 100)).replace('.', ',') }} %{% else %}{{ r.wert|euro_vz }}{% endif %}{% if r.notiz %}<div class="leise" style="font-family:inherit">{{ r.notiz }}</div>{% endif %}</td>
+          <td style="width:1%">{% if darf_schreiben %}<form method="post" action="{{ url_for('depot.rendite', kid=k.id) }}" data-frage="Diesen Eintrag entfernen?">{{ csrf() }}<button class="btn klein" type="submit" name="loeschen" value="{{ r.id }}" aria-label="Eintrag entfernen">✕</button></form>{% endif %}</td></tr>
+      {% endfor %}</tbody></table>
+    {% else %}<p class="leer">Noch keine Rendite eingetragen.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

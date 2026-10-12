@@ -223,9 +223,10 @@ class Ablauf(unittest.TestCase):
         self._phase34(db, markt, kat_lebensmittel)
         self._v03(db, kat_lebensmittel)
         self._v031(db)
+        self._v040(db)
 
         # 11. Import rückgängig
-        lauf = db.execute("SELECT id FROM importlauf WHERE anzahl_neu = 2").fetchone()["id"]
+        lauf = db.execute("SELECT id FROM importlauf WHERE anzahl_neu = 2 ORDER BY id").fetchone()["id"]
         html = self.post(f"/import/lauf/{lauf}/rueckgaengig", {}, von=f"/import/lauf/{lauf}")
         self.assertIn("2 Buchungen entfernt", html)
         self.assertEqual(db.execute("SELECT COUNT(*) AS n FROM buchung WHERE ist_umbuchung = 1").fetchone()["n"], 0)
@@ -519,7 +520,7 @@ class Ablauf(unittest.TestCase):
         db.commit()
         html = self.post(f"/pruefen/{ab}", {"art": "umbuchung", "gegenkonto": str(bar), "abrechnungsmonat": "2026-10"},
                          von="/pruefen/?ansicht=einzeln")
-        self.assertIn("Gegenbuchung im Barkonto wurde automatisch angelegt", html)
+        self.assertIn("Gegenbuchung im Bar- bzw. Depotkonto wurde automatisch angelegt", html)
         g = db.execute("SELECT * FROM buchung WHERE konto_id = ?", (bar,)).fetchone()
         self.assertEqual((g["betrag_cent"], g["ist_umbuchung"], g["auto_gegenbuchung"], g["umbuchung_partner_id"]),
                          (20000, 1, 1, ab))
@@ -598,7 +599,7 @@ class Ablauf(unittest.TestCase):
         d4, d5 = neue("v032-d", -1000), neue("v032-e", -2000)
         html = self.post("/buchungen/sammel", {"ids": [str(d4), str(d5)], "aktion": "als_umbuchung", "gegenkonto": str(bar),
                                                "zurueck": "/buchungen/?monat=alle"}, von="/buchungen/?monat=alle")
-        self.assertIn("2 Buchungen als Umbuchung markiert (2 im Barkonto gegengebucht)", html)
+        self.assertIn("2 Buchungen als Umbuchung markiert (2 automatisch gegengebucht)", html)
         self.assertEqual(tuple(gegen(d5)), (bar, 2000, 1))
         with self.app.app_context():
             self.assertEqual(importer.kontostand(bar), 5000 + 7000 + 3000 + 1000 + 2000)
@@ -611,6 +612,122 @@ class Ablauf(unittest.TestCase):
             db.execute("DELETE FROM buchung WHERE id = ?", (i,))
         db.commit()
         self.assertIsNone(db.execute("SELECT 1 FROM buchung WHERE konto_id = ?", (bar,)).fetchone())
+
+    def _v040(self, db):
+        """0.4.0: Dashboard-Links, Unterkategorien, Depot mit Rendite, Screenshot-Import."""
+        from datetime import date
+        from app.services import depot, ocr
+        # --- Dashboard: Unterkategorie mit Ausgabe -> aufklappbar; KPIs verlinken auf gefilterte Buchungen
+        kind = db.execute("SELECT k.id, k.parent_id FROM kategorie k JOIN kategorie p ON p.id = k.parent_id "
+                          "WHERE p.art IS NULL OR p.art = 'ausgabe' LIMIT 1").fetchone()
+        b = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                       "abrechnungsmonat, kategorie_id, dedup_hash) VALUES (1, '2026-10-03', -4321, 'Testladen', '', 'testladen', "
+                       "'2026-10', ?, 'v040-kind')", (kind["id"],)).lastrowid
+        db.commit()
+        html = self.get("/?monat=2026-10")
+        self.assertIn('class="aufklapper"', html)
+        self.assertIn("art=einnahme", html)
+        self.assertIn("art=ausgabe", html)
+        self.assertIn(f"kategorie={kind['id']}", html)
+        html = self.get("/buchungen/?monat=2026-10&art=ausgabe")
+        self.assertIn("Ausgaben (ohne Umbuchungen)", html)
+        self.assertIn("Testladen", html)
+        self.assertNotIn("Testladen", self.get("/buchungen/?monat=2026-10&art=einnahme"))
+        db.execute("DELETE FROM buchung WHERE id = ?", (b,))
+        db.commit()
+
+        # --- Depot: Einzahlung vom Giro (Gegenbuchung automatisch), Gebühr, Rendite in % und €
+        self.post("/konten/neu", {"name": "ETF-Depot", "typ": "depot", "startsaldo": "0", "sichtbarkeit": "alle", "aktiv": "1"})
+        dep = db.execute("SELECT id FROM konto WHERE typ = 'depot'").fetchone()["id"]
+        ueb = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                         "abrechnungsmonat, dedup_hash) VALUES (1, '2026-10-01', -100000, 'Depot Sparplan', '', 'depot sparplan', "
+                         "'2026-10', 'v040-dep')").lastrowid
+        db.commit()
+        html = self.post(f"/buchungen/{ueb}", {"art": "umbuchung", "gegenkonto": str(dep), "abrechnungsmonat": "2026-10",
+                                               "tags": "", "notiz": ""}, von=f"/buchungen/{ueb}")
+        self.assertIn("automatisch angelegt", html)
+        g = db.execute("SELECT * FROM buchung WHERE konto_id = ?", (dep,)).fetchone()
+        self.assertEqual((g["betrag_cent"], g["ist_umbuchung"], g["gegenpartei"]), (100000, 1, "Einzahlung von Girokonto"))
+        html = self.post(f"/depot/{dep}/eintrag", {"art": "gebuehr", "betrag": "5", "datum": "2026-10-02",
+                                                    "gegenpartei": "Depotgebühr"}, von=f"/depot/{dep}")
+        self.assertIn("Gebühr / Kosten über 5,00", html)
+        # Einzahlung von Hand aus einem Konto, das noch nicht importiert ist -> wartet; der spätere Import verknüpft
+        self.post(f"/depot/{dep}/eintrag", {"art": "einzahlung", "betrag": "200", "datum": "2026-10-05", "gegenkonto": "1"},
+                  von=f"/depot/{dep}")
+        hand = db.execute("SELECT * FROM buchung WHERE konto_id = ? AND betrag_cent = 20000", (dep,)).fetchone()
+        self.assertEqual((hand["ist_umbuchung"], hand["umbuchung_konto_id"]), (1, 1))
+        giro = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                          "abrechnungsmonat, dedup_hash) VALUES (1, '2026-10-05', -20000, 'Depot', '', 'depot', '2026-10', "
+                          "'v040-dep2')").lastrowid
+        db.commit()
+        self.post(f"/buchungen/{giro}", {"art": "umbuchung", "gegenkonto": str(dep), "abrechnungsmonat": "2026-10",
+                                         "tags": "", "notiz": ""}, von=f"/buchungen/{giro}")
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM buchung WHERE konto_id = ? AND betrag_cent = 20000", (dep,)).fetchone()[0], 1)
+        self.assertEqual(db.execute("SELECT umbuchung_partner_id FROM buchung WHERE id = ?", (giro,)).fetchone()[0], hand["id"])
+        self.post(f"/depot/{dep}/rendite", {"wert": "10", "einheit": "prozent", "datum": "2026-10-10"}, von=f"/depot/{dep}")
+        with self.app.app_context():
+            kz = depot.kennzahlen(dep)
+        self.assertEqual((kz["kapital"], kz["kosten"], kz["rendite"], kz["wert"]), (119500, 500, 11950, 131450))
+        self.post(f"/depot/{dep}/rendite", {"wert": "1.234,56", "einheit": "betrag", "datum": "2026-10-11"}, von=f"/depot/{dep}")
+        with self.app.app_context():
+            self.assertEqual(depot.wert(dep), 119500 + 123456)
+        html = self.get(f"/depot/{dep}")
+        self.assertIn("Rendite-Verlauf", html)
+        self.assertIn("10,00 %", html)
+        self.assertIn(f"/depot/{dep}", self.get("/"))
+        self.assertIn("2.429,56", self.get("/konten/"))  # Wert = Kapital + Rendite
+        db.execute("DELETE FROM buchung WHERE konto_id = ? OR dedup_hash IN ('v040-dep', 'v040-dep2')", (dep,))
+        db.commit()
+
+        # --- Screenshot-Import: Erkennung aus Wortpositionen (Layout der Hanseatic-App)
+        def w(text, x, y, h=30):
+            return {"text": text, "x": x, "y": y, "w": 18 * len(text), "h": h, "conf": 90}
+        ws = [w("22:28", 50, 30), w("Kartenübersicht", 320, 120),
+              w("P", 90, 260, 90), w("Parken", 271, 225), w("Hengsten-", 390, 225), w("berg", 271, 268), w("Es", 350, 268),
+              w("Mobilität", 271, 328), w("-2,00", 700, 333), w("€", 800, 333), w(">", 840, 333),
+              w("12.10.2026", 271, 410), w("gebucht", 698, 410),
+              w("Apple", 271, 538), w("Freizeit", 271, 598), w("&", 400, 598), w("Unterhaltung", 271, 640),
+              w("“0,99", 700, 627), w("€", 800, 627), w("09.10.2026", 271, 722), w("gebucht", 698, 722),
+              w("BAUMARKT", 62, 910, 20), w("Globus", 271, 850), w("Baumarkt", 400, 850), w("Lebensmittel", 271, 912),
+              w("69,91", 700, 918), w("€", 800, 918), w("0710.2026", 271, 993), w("vorgemerkt", 680, 993),
+              w("Übersicht", 10, 1810), w("Services", 210, 1810)]
+        erg = ocr.auswerten(ws, heute=date(2026, 10, 12))["umsaetze"]
+        self.assertEqual([(u["datum"].isoformat(), u["gegenpartei"], u["bank_kategorie"], u["betrag_cent"], u["status"])
+                          for u in erg],
+                         [("2026-10-12", "Parken Hengstenberg Es", "Mobilität", -200, "gebucht"),
+                          ("2026-10-09", "Apple", "Freizeit & Unterhaltung", -99, "gebucht"),
+                          ("2026-10-07", "Globus Baumarkt", "Lebensmittel", -6991, "vorgemerkt")])
+        self.assertEqual(ocr.finde_datum("Gestern", date(2026, 10, 12)), date(2026, 10, 11))
+        self.assertEqual(ocr.finde_datum("3. Okt. 2026", date(2026, 10, 12)), date(2026, 10, 3))
+        self.assertEqual(ocr.finde_datum("28.12.", date(2026, 1, 5)), date(2025, 12, 28))
+        self.assertEqual(ocr.finde_betrag("+1.250,00 €")[:2], (125000, 1))
+
+        # Zusammenführen überlappender Screenshots und Übernahme
+        self.post("/konten/neu", {"name": "Kreditkarte", "typ": "kreditkarte", "startsaldo": "0", "sichtbarkeit": "alle", "aktiv": "1"})
+        kk = db.execute("SELECT id FROM konto WHERE typ = 'kreditkarte'").fetchone()["id"]
+        from app.views.importe import screenshot_zeilen
+        with self.app.test_request_context():
+            zeilen = screenshot_zeilen(kk, [erg[:2], erg[1:]])
+        self.assertEqual(len(zeilen), 3)
+        self.assertEqual([z["vorauswahl"] for z in zeilen], [True, True, False])  # vorgemerkt nicht vorausgewählt
+        self.assertIn("Aus Zwischenablage einfügen", self.get(f"/import/screenshot?konto={kk}"))
+        daten = {"konto_id": str(kk), "anzahl_bilder": "2", "nr": ["1", "2"]}
+        for i, z in enumerate(zeilen, 1):
+            daten.update({f"hash_{i}": z["hash"], f"datum_{i}": z["datum"].isoformat(), f"partei_{i}": z["gegenpartei"],
+                          f"bankkat_{i}": z["bank_kategorie"], f"betrag_{i}": str(z["betrag_cent"] / 100).replace(".", ",")})
+        html = self.post("/import/screenshot/uebernehmen", daten, von=f"/import/screenshot?konto={kk}")
+        self.assertIn("2 Umsätze übernommen", html)
+        self.assertEqual(db.execute("SELECT SUM(betrag_cent) FROM buchung WHERE konto_id = ?", (kk,)).fetchone()[0], -299)
+        with self.app.test_request_context():
+            nochmal = screenshot_zeilen(kk, [erg])
+        self.assertEqual([z["pruefstatus"] for z in nochmal], ["doppelt", "doppelt", "neu"])
+        # erneutes Absenden legt nichts doppelt an
+        self.post("/import/screenshot/uebernehmen", daten, von=f"/import/screenshot?konto={kk}")
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM buchung WHERE konto_id = ?", (kk,)).fetchone()[0], 2)
+        # Import rückgängig machen funktioniert wie beim CSV
+        lauf = db.execute("SELECT id FROM importlauf WHERE konto_id = ?", (kk,)).fetchone()["id"]
+        self.post(f"/import/lauf/{lauf}/rueckgaengig", {}, von=f"/import/lauf/{lauf}")
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM buchung WHERE konto_id = ?", (kk,)).fetchone()[0], 0)
 
     def test_csrf(self):
         r = self.c.post("/login", data={"name": "x", "passwort": "y"})

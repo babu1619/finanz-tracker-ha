@@ -7,6 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DATA_DIR=/data \
     PORT=8080
 
+# Texterkennung für den Screenshot-Import (läuft lokal, ohne Internet)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /opt/finanz
 COPY requirements.txt .
 RUN pip install -r requirements.txt

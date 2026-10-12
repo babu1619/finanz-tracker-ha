@@ -1,6 +1,6 @@
 # Finanz-Tracker – Installation auf dem Home Assistant Green
 
-Version 0.3.2 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
+Version 0.4.0 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
 Die App ist eine eigenständige, verschlüsselte Webseite (https, Port 8099), die sich auf dem Handy als App installieren lässt;
 Home Assistant dient nur als Host.
 Alle Daten liegen lokal in der SQLite-Datenbank des Add-ons und sind Teil der Home-Assistant-Backups.
@@ -79,6 +79,21 @@ Startset an Kategorien angehakt lassen › „Einrichten“.
 
 Tipp für den Start: Die letzten 12 Monate importieren und einmal den Prüf-Modus durcharbeiten. Danach gibt es
 genug Regeln und Erfahrungswerte für eine weitgehend automatische Zuordnung.
+
+## Neu in 0.4.0 – kurz erklärt
+
+- **Dashboard verlinkt:** Ein Tipp auf „Einnahmen“ oder „Ausgaben“ öffnet die passenden Buchungen des Monats, ein Tipp
+  auf ein Konto dessen Buchungen. Hauptkategorien mit Unterkategorien haben links einen Pfeil zum Aufklappen.
+- **Depot ohne Auszug:** Konto vom Typ „Depot“ anlegen, dann unter Konten → „Rendite & Einträge“ (oder im Dashboard
+  auf das Depot tippen). Überweisungen ins Depot im Girokonto als „Umbuchung“ mit Gegenkonto Depot speichern (oder per
+  Regel) – die Einzahlung im Depot entsteht automatisch. Gebühren, Erträge und Ein-/Auszahlungen ohne Gegenstück
+  trägst du dort von Hand ein. Die aktuelle Rendite aus der Depot-App in % oder € eintragen; der Depotwert
+  (Kapital + Rendite) fließt ins Vermögen ein.
+- **Kreditkarte per Screenshot:** Import → „Screenshot einlesen“. In der Banking-App Screenshots der Umsatzliste
+  machen, dann hier auswählen oder einfügen (Handy: „Aus Zwischenablage einfügen“ oder lange ins Feld tippen →
+  Einfügen; PC: Strg+V). Die Texterkennung (Tesseract) läuft im Add-on selbst. Erkannte Umsätze prüfen, Tippfehler
+  korrigieren, „Ausgewählte übernehmen“. Vorgemerkte Umsätze sind nicht vorausgewählt; schon übernommene werden
+  erkannt. Das Add-on-Image wird dadurch beim Update etwas größer (Neubau dauert einige Minuten).
 
 ## Neu in 0.3.0 – kurz erklärt
 

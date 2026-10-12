@@ -242,3 +242,138 @@ def profil_datei(pid):
     commit()
     melde("Neue Beispieldatei eingelesen. Bekannte Spalten wurden übernommen, bitte den Rest prüfen.")
     return redirect(url_for("importe.profil", pid=pid))
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Screenshot-Import (Kreditkarte o. Ä. ohne CSV): Texterkennung lokal, Prüftabelle, dann übernehmen
+
+def _screenshot_konten():
+    sichtbar = auth.sichtbare_konten(nur_aktive=True, mit_darlehen=False)
+    return q(f"SELECT * FROM konto WHERE id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) "
+             f"ORDER BY typ != 'kreditkarte', sortierung, name", sichtbar)
+
+
+@bp.route("/screenshot", methods=["GET", "POST"])
+@auth.schreibrecht
+def screenshot():
+    from ..services import ocr
+    konten = _screenshot_konten()
+    if request.method == "GET":
+        return render_template("import_screenshot.html", konten=konten, ocr_da=ocr.verfuegbar(),
+                               konto_id=int_oder_none(request.args.get("konto")))
+    konto_id = int_oder_none(request.form.get("konto_id"))
+    if konto_id not in {k["id"] for k in konten}:
+        melde("Bitte ein Konto wählen.", "warn")
+        return redirect(url_for("importe.screenshot"))
+    bilder = [f for f in request.files.getlist("bilder") if f and f.filename]
+    if not bilder:
+        melde("Bitte mindestens einen Screenshot auswählen oder einfügen.", "warn")
+        return redirect(url_for("importe.screenshot", konto=konto_id))
+    alle, fehler, rohtexte = [], [], []
+    for nr, f in enumerate(bilder[:10], 1):
+        try:
+            erg = ocr.erkenne(f.read())
+        except ocr.OcrFehler as exc:
+            fehler.append(f"Bild {nr}: {exc}")
+            continue
+        rohtexte.append(erg["text"])
+        if not erg["umsaetze"]:
+            fehler.append(f"Bild {nr}: keine Umsätze erkannt.")
+        alle.append(erg["umsaetze"])
+    zeilen = screenshot_zeilen(konto_id, alle)
+    konto = q1("SELECT * FROM konto WHERE id = ?", (konto_id,))
+    return render_template("import_screenshot_pruefen.html", konto=konto, zeilen=zeilen, fehler=fehler,
+                           rohtext="\n\n".join(rohtexte), anzahl_bilder=len(bilder))
+
+
+def _ocr_schluessel(u) -> tuple:
+    from ..util import norm_text
+    return (u["datum"].isoformat() if u["datum"] else "", u["betrag_cent"], norm_text(u["gegenpartei"])[:40])
+
+
+def screenshot_zeilen(konto_id, listen: list[list[dict]]) -> list[dict]:
+    """Ergebnisse mehrerer Screenshots zusammenführen und mit vorhandenen Buchungen abgleichen.
+
+    Überlappende Screenshots (beim Scrollen) zeigen dieselben Umsätze mehrfach: Je Schlüssel zählt die höchste
+    Anzahl in einem einzelnen Bild. Gleiche Umsätze im selben Bild (z. B. zweimal Parken am selben Tag) bleiben.
+    """
+    import hashlib
+    gesamt: dict = {}
+    reihenfolge = []
+    for liste in listen:
+        je_bild: dict = {}
+        for u in liste:
+            s = _ocr_schluessel(u)
+            je_bild.setdefault(s, []).append(u)
+        for s, us in je_bild.items():
+            if s not in gesamt:
+                reihenfolge.append(s)
+                gesamt[s] = us
+            elif len(us) > len(gesamt[s]):
+                gesamt[s] = us
+    vorhanden = {r["dedup_hash"] for r in q("SELECT dedup_hash FROM buchung WHERE konto_id = ?", (konto_id,))}
+    zeilen = []
+    for s in reihenfolge:
+        for n, u in enumerate(gesamt[s]):
+            h = "ocr:" + hashlib.sha256(f"{konto_id}|{'|'.join(map(str, s))}#{n}".encode()).hexdigest()[:40]
+            aehnlich = None
+            if u["datum"]:
+                aehnlich = q1("""SELECT id, gegenpartei, buchungsdatum FROM buchung WHERE konto_id = ? AND betrag_cent = ?
+                                 AND abs(julianday(buchungsdatum) - julianday(?)) <= 2 LIMIT 1""",
+                              (konto_id, u["betrag_cent"], u["datum"].isoformat()))
+            status = "doppelt" if h in vorhanden else ("aehnlich" if aehnlich else "neu")
+            zeilen.append({**u, "hash": h, "pruefstatus": status, "aehnlich": aehnlich,
+                           "vorauswahl": status == "neu" and u["status"] != "vorgemerkt" and bool(u["datum"])})
+    zeilen.sort(key=lambda z: z["datum"].isoformat() if z["datum"] else "", reverse=True)
+    return zeilen
+
+
+@bp.route("/screenshot/uebernehmen", methods=["POST"])
+@auth.schreibrecht
+def screenshot_uebernehmen():
+    from datetime import date as _date
+    from ..services import umbuchungen, zuordnung
+    from ..util import monat_von, parse_euro_eingabe, partner_key
+    f = request.form
+    konto_id = int_oder_none(f.get("konto_id"))
+    if konto_id not in {k["id"] for k in _screenshot_konten()}:
+        abort(403)
+    vorhanden = {r["dedup_hash"] for r in q("SELECT dedup_hash FROM buchung WHERE konto_id = ?", (konto_id,))}
+    gewaehlt = f.getlist("nr")
+    daten, fehler = [], 0
+    for nr in gewaehlt:
+        h = f.get(f"hash_{nr}", "")
+        if not h.startswith("ocr:") or h in vorhanden:
+            continue
+        try:
+            d = _date.fromisoformat(f.get(f"datum_{nr}", ""))
+            betrag = parse_euro_eingabe(f.get(f"betrag_{nr}", ""))
+        except ValueError:
+            fehler += 1
+            continue
+        partei = f.get(f"partei_{nr}", "").strip()
+        if not betrag or not partei:
+            fehler += 1
+            continue
+        bank_kat = f.get(f"bankkat_{nr}", "").strip()
+        daten.append((d, betrag, partei, bank_kat, h))
+        vorhanden.add(h)
+    if not daten:
+        melde("Keine Zeile übernommen." + (f" {fehler} Zeilen hatten ungültige Werte." if fehler else ""), "warn")
+        return redirect(url_for("importe.screenshot", konto=konto_id))
+    lauf_id = exe("INSERT INTO importlauf (konto_id, dateiname, benutzer_id, anzahl_neu, anzahl_doppelt, anzahl_fehler) "
+                  "VALUES (?,?,?,?,?,?)",
+                  (konto_id, f"Screenshot ({f.get('anzahl_bilder') or 1} Bild/er)", g.user["id"], len(daten),
+                   len(gewaehlt) - len(daten) - fehler, fehler))
+    ids = []
+    for d, betrag, partei, bank_kat, h in daten:
+        ids.append(exe("""INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key,
+                          abrechnungsmonat, dedup_hash, importlauf_id, rohdaten) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                       (konto_id, d.isoformat(), betrag, partei, bank_kat or "", partner_key(partei), monat_von(d), h,
+                        lauf_id, jdump({"quelle": "screenshot", "bank_kategorie": bank_kat}))))
+    zuordnung.ordne_zu(ids)
+    umbuchungen.erkenne(ids)
+    log_aenderung(g.user["id"], "importlauf", lauf_id, "screenshot", {"buchungen": len(ids)})
+    commit()
+    melde(f"{len(ids)} Umsätze übernommen." + (f" {fehler} Zeilen mit ungültigen Werten übersprungen." if fehler else ""))
+    return redirect(url_for("importe.lauf", lid=lauf_id))

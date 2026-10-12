@@ -1,5 +1,13 @@
 {% extends "base.html" %}
 {% block titel %}Dashboard{% endblock %}
+{% macro katzeile(k, max_kat, unter=False) %}
+      <a class="katzeile{{ ' unter' if unter }}" href="{{ url_for('buchungen.liste', monat=monat, kategorie=(k.id if k.id else 'ohne'), art='ausgabe', person=person_id) }}">
+        <span class="name" title="{{ k.pfad or k.name }}">{{ k.name }}</span>
+        <span class="balken"><span style="width: {{ (k.betrag / max_kat * 100)|round(1) }}%; {% if not k.id %}background:#C98A12{% endif %}"></span></span>
+        <span class="b mono">{{ k.betrag|euro_rund }}</span>
+        <span class="d">{% if k.vormonat %}{% set d = ((k.betrag - k.vormonat) / k.vormonat * 100)|round|int %}<span style="color: {{ '#8A1F18' if d > 0 else '#0A4D42' }}">{% if d > 500 %}&gt; +500 %{% else %}{{ '+' if d > 0 }}{{ d }} %{% endif %}</span>{% else %}<span class="leise">neu</span>{% endif %}</span>
+      </a>
+{%- endmacro %}
 {% block inhalt %}
 <div class="kopf">
   <div class="monatwahl">
@@ -15,10 +23,10 @@
 </div>
 
 <div class="kpis">
-  <div class="kpi"><div class="label">Einnahmen</div><div class="wert">{{ werte.einnahmen|euro_rund }}</div>
-    <div class="unter">Vormonat {{ vormonat.einnahmen|euro_rund }}</div></div>
-  <div class="kpi"><div class="label">Ausgaben</div><div class="wert">{{ werte.ausgaben|euro_rund }}</div>
-    <div class="unter">Vormonat {{ vormonat.ausgaben|euro_rund }} · ohne Umbuchungen</div></div>
+  <a class="kpi kpi-link" href="{{ url_for('buchungen.liste', monat=monat, art='einnahme', person=person_id) }}" title="Buchungen dazu anzeigen"><div class="label">Einnahmen <span aria-hidden="true">›</span></div><div class="wert">{{ werte.einnahmen|euro_rund }}</div>
+    <div class="unter">Vormonat {{ vormonat.einnahmen|euro_rund }}</div></a>
+  <a class="kpi kpi-link" href="{{ url_for('buchungen.liste', monat=monat, art='ausgabe', person=person_id) }}" title="Buchungen dazu anzeigen"><div class="label">Ausgaben <span aria-hidden="true">›</span></div><div class="wert">{{ werte.ausgaben|euro_rund }}</div>
+    <div class="unter">Vormonat {{ vormonat.ausgaben|euro_rund }} · ohne Umbuchungen</div></a>
   <div class="kpi"><div class="label">Saldo · Sparquote</div>
     <div class="wert {{ 'pos' if werte.saldo > 0 }}">{{ werte.saldo|euro_rund }}</div>
     <div class="unter">{% if werte.sparquote is not none %}{{ (werte.sparquote * 100)|round|int }} % der Einnahmen{% else %}–{% endif %}</div></div>
@@ -32,12 +40,15 @@
     {% if kat %}
     <div style="margin-top:10px">
       {% for k in kat %}
-      <a class="katzeile" href="{{ url_for('buchungen.liste', monat=monat, kategorie=(k.id if k.id else 'ohne')) }}">
-        <span class="name" title="{{ k.pfad or k.name }}">{{ k.name }}</span>
-        <span class="balken"><span style="width: {{ (k.betrag / max_kat * 100)|round(1) }}%; {% if not k.id %}background:#C98A12{% endif %}"></span></span>
-        <span class="b mono">{{ k.betrag|euro_rund }}</span>
-        <span class="d">{% if k.vormonat %}{% set d = ((k.betrag - k.vormonat) / k.vormonat * 100)|round|int %}<span style="color: {{ '#8A1F18' if d > 0 else '#0A4D42' }}">{% if d > 500 %}&gt; +500 %{% else %}{{ '+' if d > 0 }}{{ d }} %{% endif %}</span>{% else %}<span class="leise">neu</span>{% endif %}</span>
-      </a>
+      <div class="katgruppe">
+        <div class="katkopf">
+          {% if k.kinder %}<button type="button" class="aufklapper" aria-expanded="false" aria-controls="kat-{{ loop.index }}" aria-label="Unterkategorien von {{ k.name }} anzeigen"><span aria-hidden="true">›</span></button>{% else %}<span class="aufklapper-platz"></span>{% endif %}
+          {{ katzeile(k, max_kat) }}
+        </div>
+        {% if k.kinder %}<div class="katkinder" id="kat-{{ loop.index }}" hidden>
+          {% for c in k.kinder %}{{ katzeile(c, max_kat, True) }}{% endfor %}
+        </div>{% endif %}
+      </div>
       {% endfor %}
     </div>
     {% else %}<p class="leer">Keine Ausgaben in diesem Monat.</p>{% endif %}
@@ -116,7 +127,7 @@
     <tbody>
     {% for r in konten %}
       <tr>
-        <td><b>{{ r.k.name }}</b> <span class="leise">{{ {'giro':'Giro','tagesgeld':'Tagesgeld','kreditkarte':'Kreditkarte','bargeld':'Bargeld','depot':'Depot','darlehen':'Darlehen · eigener Bereich, nicht in Summen','sonstiges':''}[r.k.typ] }}</span></td>
+        <td><a class="kontolink" href="{% if r.k.typ == 'darlehen' %}{{ url_for('darlehen.detail', kid=r.k.id) }}{% elif r.k.typ == 'depot' %}{{ url_for('depot.detail', kid=r.k.id) }}{% else %}{{ url_for('buchungen.liste', konto=r.k.id, monat='alle') }}{% endif %}"><b>{{ r.k.name }}</b></a> <span class="leise">{{ {'giro':'Giro','tagesgeld':'Tagesgeld','kreditkarte':'Kreditkarte','bargeld':'Bargeld','depot':'Depot','darlehen':'Darlehen · eigener Bereich, nicht in Summen','sonstiges':''}[r.k.typ] }}</span></td>
         <td class="betrag">{{ r.saldo|euro }}</td>
         <td class="leise">{% if r.letzter %}{{ r.letzter.zeitpunkt|datum }}{% if r.tage == 0 %} · heute{% elif r.tage == 1 %} · gestern{% elif r.tage is not none %} · vor {{ r.tage }} Tagen{% endif %}{% else %}noch nie{% endif %}</td>
         <td>{% if r.letzter and r.letzter.saldo_differenz_cent %}<span class="tag bad">Saldo weicht ab</span>

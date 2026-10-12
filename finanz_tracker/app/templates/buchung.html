@@ -10,7 +10,7 @@
     <p>{{ b.verwendungszweck }}</p>
     {% if b.gegen_iban %}<p class="leise">Gegen-IBAN {{ b.gegen_iban }}</p>{% endif %}
     {% if b.ist_umbuchung %}
-      <div class="flash ok">{% if b.auto_gegenbuchung %}Automatisch angelegte Gegenbuchung (Barkonto) – sie verschwindet, wenn die Verknüpfung gelöst wird. {% endif %}Umbuchung{% if partner %} mit {{ partner.konto_name }} am {{ partner.buchungsdatum|datum }} ({{ partner.betrag_cent|euro_vz }}){% elif b.umbuchung_konto_name %} mit {{ b.umbuchung_konto_name }} – die Gegenbuchung wird beim nächsten Import dieses Kontos automatisch verknüpft{% else %} an ein Konto außerhalb des Tools{% endif %}.
+      <div class="flash ok">{% if b.auto_gegenbuchung %}Automatisch angelegte Gegenbuchung – sie verschwindet, wenn die Verknüpfung gelöst wird. {% endif %}Umbuchung{% if partner %} mit {{ partner.konto_name }} am {{ partner.buchungsdatum|datum }} ({{ partner.betrag_cent|euro_vz }}){% elif b.umbuchung_konto_name %} mit {{ b.umbuchung_konto_name }} – die Gegenbuchung wird beim nächsten Import dieses Kontos automatisch verknüpft{% else %} an ein Konto außerhalb des Tools{% endif %}.
       {% if darf_schreiben %}<form method="post" style="display:inline">{{ csrf() }}<input type="hidden" name="aktion" value="umbuchung_loesen"><input type="hidden" name="zurueck" value="{{ zurueck }}"><button class="btn klein" type="submit">Verknüpfung lösen</button></form>{% endif %}</div>
     {% endif %}
     <p class="leise">Zuordnung: {{ quelle(b) or 'noch keine' }}</p>
@@ -35,10 +35,10 @@
     <div data-art-fuer="umbuchung" hidden style="display:flex;flex-direction:column;gap:6px">
       <label class="feld">Gegenkonto
         <select name="gegenkonto">
-          {% for k in gegenkonten %}<option value="{{ k.id }}">{{ k.name }}{{ ' (Gegenbuchung wird automatisch angelegt)' if k.typ == 'bargeld' }}</option>{% endfor %}
+          {% for k in gegenkonten %}<option value="{{ k.id }}">{{ k.name }}{{ ' (Gegenbuchung wird automatisch angelegt)' if k.typ in ('bargeld', 'depot') }}</option>{% endfor %}
           <option value="extern">Konto außerhalb des Tools (z. B. Depot)</option>
         </select></label>
-      <p class="leise" style="margin:0">Umbuchungen zählen nicht als {{ 'Ausgabe' if b.betrag_cent < 0 else 'Einnahme' }}. Ins Barkonto wird die Gegenbuchung automatisch angelegt; bei anderen Konten wird eine vorhandene Gegenbuchung verknüpft oder beim nächsten Import.</p>
+      <p class="leise" style="margin:0">Umbuchungen zählen nicht als {{ 'Ausgabe' if b.betrag_cent < 0 else 'Einnahme' }}. Ins Bar- oder Depotkonto wird die Gegenbuchung automatisch angelegt; bei anderen Konten wird eine vorhandene Gegenbuchung verknüpft oder beim nächsten Import.</p>
     </div>
     <div data-art-fuer="kategorie" style="display:flex;flex-direction:column;gap:12px">
     <div id="einzelkategorie" {{ 'hidden' if split_liste or split_offen }}>

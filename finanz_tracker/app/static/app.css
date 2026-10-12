@@ -284,3 +284,38 @@ header.top .plus { display: inline-flex; align-items: center; justify-content: c
   .kpi { flex: 1 1 150px; padding: 12px 14px; }
   .kpi .wert { font-size: 20px; }
 }
+
+/* 0.4.0: Dashboard – Links und aufklappbare Unterkategorien */
+a.kpi-link { color: inherit; text-decoration: none; transition: border-color .15s, box-shadow .15s; }
+a.kpi-link:hover, a.kpi-link:focus-visible { border-color: var(--accent); box-shadow: 0 1px 6px rgba(15,107,92,.12); }
+a.kpi-link .label span { color: var(--quiet); }
+.katkopf { display: flex; align-items: center; gap: 4px; }
+.katkopf .katzeile { flex: 1; min-width: 0; }
+.aufklapper, .aufklapper-platz { flex: 0 0 26px; width: 26px; height: 26px; }
+.aufklapper { border: 0; background: none; padding: 0; cursor: pointer; border-radius: 6px; color: var(--ink2); font-size: 18px; line-height: 1; }
+.aufklapper:hover { background: #EEF2F0; }
+.aufklapper span { display: inline-block; transition: transform .15s; }
+.aufklapper[aria-expanded="true"] span { transform: rotate(90deg); }
+.katkinder { margin: 0 0 6px 30px; border-left: 2px solid #E3E8E5; padding-left: 8px; }
+.katzeile.unter { min-height: 28px; font-size: 13px; }
+.katzeile.unter .name { width: 142px; color: var(--ink2); }
+.katzeile.unter .balken span { opacity: .65; }
+a.kontolink { color: inherit; text-decoration: none; }
+a.kontolink:hover b { text-decoration: underline; }
+@media (max-width: 640px) { .katzeile.unter .name { width: 98px; } .katkinder { margin-left: 14px; } }
+
+/* 0.4.0: Screenshot-Import */
+.ablage { border: 2px dashed #C9D1CD; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px; align-items: stretch; background: #FAFBFA; outline: none; }
+.ablage.ueber, .ablage:focus-visible { border-color: var(--accent); background: var(--accent-tint); }
+.ablage-text { display: flex; flex-direction: column; gap: 4px; }
+.ablage-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; }
+.einfuegefeld { min-height: 44px; border: 1px solid #D5DCD8; border-radius: 8px; padding: 10px 12px; background: #fff; color: var(--quiet); font-size: 14px; overflow: hidden; }
+.einfuegefeld:empty::before { content: attr(data-platzhalter); }
+.einfuegefeld img { display: none; }
+.vorschaubilder { display: flex; flex-wrap: wrap; gap: 10px; }
+.vorschaubilder:empty { display: none; }
+.vorschaubild { position: relative; width: 88px; height: 150px; border-radius: 8px; overflow: hidden; border: 1px solid #D5DCD8; background: #fff; }
+.vorschaubild img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.vorschaubild button { position: absolute; top: 4px; right: 4px; width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(24,33,30,.75); color: #fff; cursor: pointer; line-height: 1; }
+.ocr-tab input[type=text], .ocr-tab input[type=date] { width: 100%; min-height: 34px; }
+.ocr-tab tr.gedimmt td { opacity: .55; }

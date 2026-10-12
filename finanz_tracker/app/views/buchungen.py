@@ -28,6 +28,7 @@ def _filter():
         "min": a.get("min", "").strip(),
         "max": a.get("max", "").strip(),
         "richtung": a.get("richtung", "") if a.get("richtung") in ("aus", "ein") else "",
+        "art": a.get("art", "") if a.get("art") in ("einnahme", "ausgabe") else "",
         "sort": a.get("sort", "") if a.get("sort", "").lstrip("-") in SORTIERUNG else "",
     }
     if f["monat"] and f["monat"] != "alle" and not ist_monat(f["monat"]):
@@ -45,7 +46,7 @@ SORTIERUNG = {
     "tags": "tagsort IS NULL, tagsort COLLATE NOCASE {r}, b.buchungsdatum DESC",
     "betrag": "b.betrag_cent {r}, b.buchungsdatum DESC",
 }
-FILTER_FELDER = ("konto", "kategorie", "person", "tag", "suche", "status", "partei", "von", "bis", "min", "max", "richtung")
+FILTER_FELDER = ("konto", "kategorie", "person", "tag", "suche", "status", "partei", "von", "bis", "min", "max", "richtung", "art")
 
 
 def _ist_datum(text) -> bool:
@@ -109,6 +110,20 @@ def _abfrage(f, limit=500):
         where.append("b.betrag_cent < 0")
     elif f["richtung"] == "ein":
         where.append("b.betrag_cent > 0")
+    if f["art"]:
+        # wie im Dashboard: Art der Kategorie entscheidet, unkategorisierte Eingänge gelten als Einnahme
+        arten = kategorien.art_map()
+        ein_ids = [k for k, a in arten.items() if a == "einnahme"]
+        umb_ids = [k for k, a in arten.items() if a == "umbuchung"]
+        ist_ein = (f"(b.kategorie_id IN ({','.join('?' * len(ein_ids)) or 'NULL'}) "
+                   f"OR (b.kategorie_id IS NULL AND b.betrag_cent > 0))")
+        if f["art"] == "einnahme":
+            where.append(f"b.ist_umbuchung = 0 AND {ist_ein}")
+            params.extend(ein_ids)
+        else:
+            where.append(f"b.ist_umbuchung = 0 AND NOT {ist_ein} AND COALESCE(b.kategorie_id, 0) NOT IN "
+                         f"({','.join('?' * len(umb_ids)) or 'NULL'})")
+            params.extend(ein_ids + umb_ids)
     if f["status"] == "ungeprueft":
         where.append("b.geprueft = 0 AND b.kategorie_id IS NOT NULL AND b.ist_umbuchung = 0")
     elif f["status"] == "umbuchung":
@@ -215,6 +230,8 @@ def _aktive_filter(f, konten) -> list[tuple[str, str]]:
         erg.append(("max", f"Betrag ≤ {f['max']} €"))
     if f["richtung"]:
         erg.append(("richtung", "nur Ausgaben" if f["richtung"] == "aus" else "nur Einnahmen"))
+    if f["art"]:
+        erg.append(("art", "Einnahmen" if f["art"] == "einnahme" else "Ausgaben (ohne Umbuchungen)"))
     if f["status"]:
         erg.append(("status", f"Status: {f['status']}"))
     return erg
@@ -291,7 +308,7 @@ def sammel():
                                        _gegenkonto(request.form.get("gegenkonto"), b))
             zaehler[erg] = zaehler.get(erg, 0) + 1
         n = sum(zaehler.values())
-        details = ", ".join(f"{v} {t}" for k, t in (("angelegt", "im Barkonto gegengebucht"), ("verknuepft", "verknüpft"),
+        details = ", ".join(f"{v} {t}" for k, t in (("angelegt", "automatisch gegengebucht"), ("verknuepft", "verknüpft"),
                                                      ("vorgemerkt", "Gegenbuchung folgt beim Import"))
                             if (v := zaehler.get(k)))
         melde(f"{n} Buchungen als Umbuchung markiert" + (f" ({details})." if details else "."))

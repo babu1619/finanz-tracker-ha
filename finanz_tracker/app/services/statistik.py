@@ -186,3 +186,52 @@ def top_gegenparteien(konten: list[int], von: str, bis: str, kat_ids=None, n=10)
         params += list(kat_ids)
     sql += f" GROUP BY b.partner_key ORDER BY summe DESC LIMIT {int(n)}"
     return q(sql, params)
+
+
+def ausgaben_baum(konten: list[int], monat: str, person_id=None) -> list[dict]:
+    """Ausgaben je oberster Kategorie mit den direkten Unterkategorien (je inkl. Teilbaum).
+
+    Ein Eintrag hat 'kinder' (absteigend sortiert); Beträge, die direkt auf der obersten Kategorie gebucht
+    sind, erscheinen dort als Kind mit 'direkt': True.
+    """
+    alle = kategorien.alle()
+    nach_id = {k["id"]: k for k in alle}
+    arten = {k["id"]: k["wirksame_art"] for k in alle}
+    oben: dict = {}
+    for r in posten(konten, monat, monat, person_id):
+        if art_von(arten, r["kategorie_id"], r["betrag"]) != "ausgabe":
+            continue
+        kette = []
+        cur = nach_id.get(r["kategorie_id"])
+        while cur:
+            kette.append(cur["id"])
+            cur = nach_id.get(cur["parent_id"]) if cur["parent_id"] else None
+        kette.reverse()
+        top = kette[0] if kette else None
+        e = oben.setdefault(top, {"betrag": 0, "kinder": {}})
+        e["betrag"] -= r["betrag"]
+        if top is not None:
+            kind = kette[1] if len(kette) > 1 else "direkt"
+            e["kinder"][kind] = e["kinder"].get(kind, 0) - r["betrag"]
+    liste = []
+    for top, e in oben.items():
+        if top is None:
+            liste.append({"id": None, "name": "Ohne Kategorie", "pfad": "Ohne Kategorie", "betrag": e["betrag"],
+                          "kinder": []})
+            continue
+        k = nach_id[top]
+        kinder = []
+        for kid, betrag in e["kinder"].items():
+            if kid == "direkt":
+                kinder.append({"id": top, "name": f"{k['name']} (direkt)", "pfad": k["pfad"], "betrag": betrag,
+                               "direkt": True})
+            else:
+                kinder.append({"id": kid, "name": nach_id[kid]["name"], "pfad": nach_id[kid]["pfad"],
+                               "betrag": betrag, "direkt": False})
+        kinder.sort(key=lambda x: -x["betrag"])
+        # nur aufklappen, wenn es wirklich etwas aufzuteilen gibt
+        if len(kinder) == 1 and kinder[0]["direkt"]:
+            kinder = []
+        liste.append({"id": top, "name": k["name"], "pfad": k["pfad"], "betrag": e["betrag"], "kinder": kinder})
+    liste.sort(key=lambda x: -x["betrag"])
+    return liste

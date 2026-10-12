@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Screenshot prüfen{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('importe.screenshot', konto=konto.id) }}">‹ Andere Screenshots</a></div>
+<div class="kopf"><h1>Erkannte Umsätze prüfen</h1><span class="leise">{{ konto.name }} · {{ zeilen|length }} erkannt aus {{ anzahl_bilder }} Bild{{ 'ern' if anzahl_bilder != 1 }}</span></div>
+{% for f in fehler %}<div class="flash warn">{{ f }}</div>{% endfor %}
+
+{% if zeilen %}
+<form method="post" action="{{ url_for('importe.screenshot_uebernehmen') }}" class="karte ohne-rand">
+  {{ csrf() }}<input type="hidden" name="konto_id" value="{{ konto.id }}"><input type="hidden" name="anzahl_bilder" value="{{ anzahl_bilder }}">
+  <p class="leise" style="padding:14px 16px 0;margin:0">Bitte kurz vergleichen und Tippfehler der Texterkennung direkt korrigieren. Übernommen werden nur angehakte Zeilen. Ausgaben stehen mit Minus, Gutschriften mit Plus.</p>
+  <div class="scroll"><table class="tab ocr-tab">
+    <thead><tr><th style="width:36px"><input type="checkbox" id="alle" aria-label="Alle auswählen"></th><th>Datum</th><th>Name</th><th>Kategorie der Bank</th><th style="text-align:right">Betrag</th><th>Hinweis</th></tr></thead>
+    <tbody>
+    {% for z in zeilen %}{% set nr = loop.index %}
+      <tr class="{{ 'gedimmt' if z.pruefstatus == 'doppelt' }}">
+        <td><input type="checkbox" name="nr" value="{{ nr }}" {{ 'checked' if z.vorauswahl }} {{ 'disabled' if z.pruefstatus == 'doppelt' }} aria-label="Zeile übernehmen">
+          <input type="hidden" name="hash_{{ nr }}" value="{{ z.hash }}"></td>
+        <td><input type="date" name="datum_{{ nr }}" value="{{ z.datum.isoformat() if z.datum else '' }}" required aria-label="Datum"></td>
+        <td><input type="text" name="partei_{{ nr }}" value="{{ z.gegenpartei }}" aria-label="Name" style="min-width:170px"></td>
+        <td><input type="text" name="bankkat_{{ nr }}" value="{{ z.bank_kategorie }}" aria-label="Kategorie der Bank" style="min-width:140px"></td>
+        <td><input type="text" name="betrag_{{ nr }}" inputmode="decimal" value="{{ ('%.2f'|format(z.betrag_cent / 100)).replace('.', ',') }}" class="mono {{ 'pos' if z.betrag_cent > 0 }}" style="width:110px;text-align:right" aria-label="Betrag"></td>
+        <td class="leise klein">{% if z.pruefstatus == 'doppelt' %}<span class="tag">schon übernommen</span>
+          {% elif z.pruefstatus == 'aehnlich' %}<span class="tag warn">evtl. vorhanden</span> {{ z.aehnlich.gegenpartei }} am {{ z.aehnlich.buchungsdatum|datum }}
+          {% elif z.status == 'vorgemerkt' %}<span class="tag info">vorgemerkt</span> Betrag kann sich noch ändern
+          {% elif not z.datum %}<span class="tag warn">Datum fehlt</span>
+          {% elif z.vorzeichen_geraten %}<span class="tag">Vorzeichen geschätzt</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody></table></div>
+  <div class="formreihe" style="padding:12px 16px 16px;align-items:center">
+    <button class="btn primaer" type="submit">Ausgewählte übernehmen</button>
+    <span class="leise">Kategorien ordnet das Tool danach wie beim CSV-Import zu; offene landen im Prüf-Modus.</span>
+  </div>
+</form>
+{% else %}
+<div class="karte leer"><h2>Keine Umsätze erkannt</h2><p>Ist auf dem Bild eine Umsatzliste mit Beträgen wie „-12,34 €“ zu sehen? Ein schärferer oder größerer Screenshot hilft oft.</p></div>
+{% endif %}
+
+{% if rohtext %}
+<details class="karte"><summary>Erkannter Rohtext</summary><pre class="mono klein" style="white-space:pre-wrap;margin:10px 0 0">{{ rohtext }}</pre></details>
+{% endif %}
+{% endblock %}

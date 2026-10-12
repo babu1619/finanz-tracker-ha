@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request
 
 from .. import auth
 from ..db import q
-from ..services import budgets, importer, ruecklagen, statistik, umbuchungen, vertraege
+from ..services import budgets, depot, importer, ruecklagen, statistik, umbuchungen, vertraege
 from ..db import commit
 from ..util import monat_plus
 from . import monat_param, int_oder_none
@@ -19,10 +19,16 @@ def index():
     konten = statistik.basis_konten(sichtbar)
     werte = statistik.monatswerte(konten, monat, person_id)
     vormonat = statistik.monatswerte(konten, monat_plus(monat, -1), person_id)
-    kat = statistik.ausgaben_nach_kategorie(konten, monat, person_id)
-    vor_kat = {k["id"]: k["betrag"] for k in statistik.ausgaben_nach_kategorie(konten, monat_plus(monat, -1), person_id)}
+    kat = statistik.ausgaben_baum(konten, monat, person_id)
+    vor_kat = {}
+    for k in statistik.ausgaben_baum(konten, monat_plus(monat, -1), person_id):
+        vor_kat[("o", k["id"])] = k["betrag"]
+        for c in k["kinder"]:
+            vor_kat[("d" if c["direkt"] else "u", c["id"])] = c["betrag"]
     for k in kat:
-        k["vormonat"] = vor_kat.get(k["id"])
+        k["vormonat"] = vor_kat.get(("o", k["id"]))
+        for c in k["kinder"]:
+            c["vormonat"] = vor_kat.get(("d" if c["direkt"] else "u", c["id"]))
     verlauf = statistik.verlauf(konten, monat, 12, person_id)
     max_verlauf = max([max(v["einnahmen"], v["ausgaben"]) for v in verlauf] + [1])
 
@@ -32,7 +38,7 @@ def index():
         marks = ",".join("?" * len(sichtbar))
         for k in q(f"SELECT * FROM konto WHERE id IN ({marks}) AND aktiv = 1 ORDER BY typ = 'darlehen', sortierung, name",
                    sichtbar):
-            saldo = importer.kontostand(k["id"])
+            saldo = depot.wert(k["id"]) if k["typ"] == "depot" else importer.kontostand(k["id"])
             if k["typ"] == "darlehen" and not q("SELECT 1 FROM buchung WHERE konto_id = ? LIMIT 1", (k["id"],)):
                 from ..services import darlehen as dl
                 d = dl.lade(k["id"])

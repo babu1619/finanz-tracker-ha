@@ -170,7 +170,7 @@ def tabelle_speichern():
         if n["verknuepft"]:
             zusatz.append(f"{n['verknuepft']} mit Gegenbuchung verknüpft")
         if n["angelegt"]:
-            zusatz.append(f"{n['angelegt']} im Barkonto gegengebucht")
+            zusatz.append(f"{n['angelegt']} automatisch gegengebucht")
         teile.append(f"{umb} als Umbuchung" + (f" ({', '.join(zusatz)})" if zusatz else ""))
     if n["ohne"]:
         teile.append(f"{n['ohne']} ohne Kategorie übersprungen")
@@ -201,7 +201,7 @@ def speichern(bid):
     if erg == "verknuepft":
         melde("Als Umbuchung mit der Gegenbuchung verknüpft.")
     elif erg == "angelegt":
-        melde("Als Umbuchung gespeichert; die Gegenbuchung im Barkonto wurde automatisch angelegt.")
+        melde("Als Umbuchung gespeichert; die Gegenbuchung im Bar- bzw. Depotkonto wurde automatisch angelegt.")
     elif erg == "vorgemerkt":
         melde("Als Umbuchung markiert. Die Gegenbuchung wird beim nächsten Import des Gegenkontos automatisch verknüpft.")
     elif erg == "extern":

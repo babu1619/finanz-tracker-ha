@@ -54,7 +54,7 @@
       <label class="check"><input type="checkbox" name="als_umbuchung" value="1" {{ 'checked' if akt.als_umbuchung }}> Als Umbuchung behandeln (zählt nicht als Ausgabe). Nicht für Darlehensraten verwenden – die sind Ausgaben.</label>
       <label class="feld">Gegenkonto der Umbuchung
         <select name="umbuchung_konto_id"><option value="">Konto außerhalb des Tools (z. B. Depot-Sparplan)</option>
-          {% for k in konten if k.typ != 'darlehen' %}<option value="{{ k.id }}" {{ 'selected' if akt.umbuchung_konto_id == k.id }}>{{ k.name }}{{ ' – Gegenbuchung wird automatisch angelegt' if k.typ == 'bargeld' }}</option>{% endfor %}</select></label>
+          {% for k in konten if k.typ != 'darlehen' %}<option value="{{ k.id }}" {{ 'selected' if akt.umbuchung_konto_id == k.id }}>{{ k.name }}{{ ' – Gegenbuchung wird automatisch angelegt' if k.typ in ('bargeld', 'depot') }}</option>{% endfor %}</select></label>
     </fieldset>
 
     {% if regel %}<label class="check"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if regel.aktiv }}> Regel aktiv</label>{% else %}<input type="hidden" name="aktiv" value="1">{% endif %}

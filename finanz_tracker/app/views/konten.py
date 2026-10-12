@@ -2,14 +2,14 @@ from flask import Blueprint, abort, g, redirect, render_template, request, url_f
 
 from .. import auth
 from ..db import q, q1, exe, commit, log_aenderung
-from ..services import importer
+from ..services import depot, importer
 from ..util import parse_euro_eingabe, norm_iban
 from . import melde, int_oder_none
 
 bp = Blueprint("konten", __name__, url_prefix="/konten")
 
 TYPEN = {"giro": "Girokonto", "tagesgeld": "Tagesgeld", "kreditkarte": "Kreditkarte", "bargeld": "Bargeld",
-         "depot": "Depot (nur Saldo)", "darlehen": "Darlehen (eigener Bereich)", "sonstiges": "Sonstiges"}
+         "depot": "Depot (Einzahlungen + Rendite)", "darlehen": "Darlehen (eigener Bereich)", "sonstiges": "Sonstiges"}
 
 
 @bp.route("/")
@@ -27,7 +27,7 @@ def liste():
                    sichtbar):
             letzter = importer.letzter_import(k["id"])
             anzahl = q1("SELECT COUNT(*) AS n FROM buchung WHERE konto_id = ?", (k["id"],))["n"]
-            rows.append({"k": k, "saldo": importer.kontostand(k["id"]), "letzter": letzter, "anzahl": anzahl,
+            rows.append({"k": k, "saldo": depot.wert(k["id"]) if k["typ"] == "depot" else importer.kontostand(k["id"]), "letzter": letzter, "anzahl": anzahl,
                          "tage": importer.tage_seit(letzter["zeitpunkt"]) if letzter else None})
     summe = sum(r["saldo"] for r in rows if r["k"]["typ"] != "darlehen" and r["k"]["aktiv"])
     return render_template("konten.html", rows=rows, summe=summe, typen=TYPEN)

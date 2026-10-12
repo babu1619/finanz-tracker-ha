@@ -13,7 +13,7 @@ from . import kategorien
 STICHWORTE = ("umbuchung", "übertrag", "uebertrag", "kreditkarte", "abrechnung", "eigenes konto", "sparen", "tagesgeld",
               "geldautomat", "bargeld", "auszahlung", "bargeldauszahlung", "atm")
 # Konten ohne Import: hier wird die Gegenbuchung einer Umbuchung automatisch angelegt
-AUTO_GEGEN_TYPEN = ("bargeld",)
+AUTO_GEGEN_TYPEN = ("bargeld", "depot")  # Konten ohne Import/Auszug
 
 
 def _eigene_konten():
@@ -73,14 +73,16 @@ def markiere(b, gegenkonto_id: int | None) -> str:
     Mit Gegenkonto: passende Gegenbuchung dort suchen (gleicher Betrag mit umgekehrtem Vorzeichen, ±10 Tage) und
     verknüpfen. Gibt es sie noch nicht, wird das Gegenkonto gemerkt; beim späteren Import wird automatisch verknüpft.
     Ohne Gegenkonto: Umbuchung an ein Konto außerhalb des Tools (z. B. Depot).
-    Ist das Gegenkonto ein Barkonto (ohne Import), wird die Gegenbuchung dort automatisch angelegt.
+    Ist das Gegenkonto ein Bar- oder Depotkonto (ohne Import), wird die Gegenbuchung dort automatisch angelegt.
     Rückgabe: 'verknuepft', 'angelegt', 'vorgemerkt' oder 'extern'.
     """
     if gegenkonto_id:
-        partner = q1("""SELECT * FROM buchung WHERE konto_id = ? AND betrag_cent = ? AND ist_umbuchung = 0
-                        AND umbuchung_partner_id IS NULL AND abs(julianday(buchungsdatum) - julianday(?)) <= 10
+        # Partner: noch nicht zugeordnete Buchung oder eine, die schon als Umbuchung auf genau dieses Konto wartet
+        partner = q1("""SELECT * FROM buchung WHERE konto_id = ? AND betrag_cent = ? AND umbuchung_partner_id IS NULL
+                        AND (ist_umbuchung = 0 OR umbuchung_konto_id = ?) AND id != ?
+                        AND abs(julianday(buchungsdatum) - julianday(?)) <= 10
                         ORDER BY abs(julianday(buchungsdatum) - julianday(?)) LIMIT 1""",
-                     (gegenkonto_id, -b["betrag_cent"], b["buchungsdatum"], b["buchungsdatum"]))
+                     (gegenkonto_id, -b["betrag_cent"], b["konto_id"], b["id"], b["buchungsdatum"], b["buchungsdatum"]))
         if partner:
             ab, an = (b["id"], partner["id"]) if b["betrag_cent"] < 0 else (partner["id"], b["id"])
             verknuepfe(ab, an)
@@ -100,7 +102,7 @@ def markiere(b, gegenkonto_id: int | None) -> str:
 
 MELDUNGEN = {
     "verknuepft": "Als Umbuchung mit der vorhandenen Gegenbuchung verknüpft.",
-    "angelegt": "Als Umbuchung gespeichert; die Gegenbuchung im Barkonto wurde automatisch angelegt.",
+    "angelegt": "Als Umbuchung gespeichert; die Gegenbuchung im Bar- bzw. Depotkonto wurde automatisch angelegt.",
     "vorgemerkt": "Als Umbuchung markiert. Die Gegenbuchung wird beim nächsten Import des Gegenkontos automatisch verknüpft.",
     "extern": "Als Umbuchung an ein Konto außerhalb des Tools markiert.",
 }
@@ -109,7 +111,10 @@ MELDUNGEN = {
 def lege_gegenbuchung_an(b, ziel) -> int:
     """Gegenbuchung im Konto ohne Import (Bargeld) anlegen und verknüpfen, z. B. −200 € Geldautomat -> +200 € Bargeld."""
     quelle = q1("SELECT name FROM konto WHERE id = ?", (b["konto_id"],))
-    text = ("Abhebung " if b["betrag_cent"] < 0 else "Einzahlung ") + (quelle["name"] if quelle else "")
+    if ziel["typ"] == "depot":
+        text = ("Einzahlung von " if b["betrag_cent"] < 0 else "Auszahlung an ") + (quelle["name"] if quelle else "")
+    else:
+        text = ("Abhebung " if b["betrag_cent"] < 0 else "Einzahlung ") + (quelle["name"] if quelle else "")
     vorhanden = q1("SELECT id FROM buchung WHERE konto_id = ? AND dedup_hash = ?", (ziel["id"], f"gegen:{b['id']}"))
     if vorhanden:
         gid = vorhanden["id"]

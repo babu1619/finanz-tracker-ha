@@ -9,7 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const alle = document.getElementById("alle");
   if (alle) {
     alle.addEventListener("change", () => {
-      document.querySelectorAll("input[name=ids]").forEach((c) => { c.checked = alle.checked; });
+      document.querySelectorAll("input[name=ids], input[name=nr]:not(:disabled)").forEach((c) => { c.checked = alle.checked; });
       zaehle();
     });
   }
@@ -402,6 +402,118 @@ document.addEventListener("DOMContentLoaded", () => {
       if (e.key === "s") skip.click();
     });
   }
+
+  // Formularfelder je nach gewählter Art ein-/ausblenden (Depot-Eintrag)
+  document.querySelectorAll("[data-art-wahl]").forEach((sel) => {
+    const form = sel.closest("form");
+    const zeige = () => form.querySelectorAll("[data-nur]").forEach((el) => {
+      el.hidden = !el.dataset.nur.split(" ").includes(sel.value);
+    });
+    sel.addEventListener("change", zeige);
+    zeige();
+  });
+
+  // Screenshot-Import: Bilder auswählen, ablegen oder aus der Zwischenablage einfügen
+  const ablage = document.getElementById("ablage");
+  if (ablage) {
+    const input = document.getElementById("bilder");
+    const vorschau = document.getElementById("vorschaubilder");
+    const knopf = document.getElementById("erkennen");
+    const feld = document.getElementById("einfuegefeld");
+    let dateien = [];
+    const zeige = () => {
+      const dt = new DataTransfer();
+      dateien.forEach((f) => dt.items.add(f));
+      input.files = dt.files;
+      vorschau.innerHTML = "";
+      dateien.forEach((f, i) => {
+        const box = document.createElement("div");
+        box.className = "vorschaubild";
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(f);
+        img.alt = `Screenshot ${i + 1}`;
+        const weg = document.createElement("button");
+        weg.type = "button";
+        weg.textContent = "✕";
+        weg.setAttribute("aria-label", `Screenshot ${i + 1} entfernen`);
+        weg.addEventListener("click", () => { dateien.splice(i, 1); zeige(); });
+        box.append(img, weg);
+        vorschau.append(box);
+      });
+      knopf.disabled = dateien.length === 0;
+    };
+    const nimm = (liste) => {
+      let n = 0;
+      Array.from(liste).forEach((f) => {
+        if (!f.type.startsWith("image/") || dateien.length >= 10) return;
+        const endung = (f.type.split("/")[1] || "png").replace("jpeg", "jpg");
+        dateien.push(f.name && f.name !== "image.png" ? f : new File([f], `screenshot-${Date.now()}-${n++}.${endung}`, { type: f.type }));
+      });
+      zeige();
+    };
+    input.addEventListener("change", () => { nimm(input.files); });
+    // Strg+V überall auf der Seite und Einfügen ins Feld (Android: lange tippen → Einfügen)
+    document.addEventListener("paste", (e) => {
+      const bilder = Array.from(e.clipboardData ? e.clipboardData.files : []).filter((f) => f.type.startsWith("image/"));
+      if (bilder.length) { e.preventDefault(); nimm(bilder); }
+      setTimeout(() => { feld.innerHTML = ""; }, 0);
+    });
+    feld.addEventListener("input", () => {
+      // manche Tastaturen fügen das Bild direkt als <img> ein statt über das paste-Ereignis
+      feld.querySelectorAll("img").forEach(async (img) => {
+        try { const blob = await (await fetch(img.src)).blob(); nimm([blob]); } catch (err) { /* ignorieren */ }
+      });
+      feld.innerHTML = "";
+    });
+    document.getElementById("zwischenablage").addEventListener("click", async () => {
+      if (!navigator.clipboard || !navigator.clipboard.read) {
+        feld.focus();
+        alertHinweis("Dein Browser erlaubt das direkte Lesen nicht. Tippe lange ins Feld darunter und wähle „Einfügen“ (am PC: Strg+V).");
+        return;
+      }
+      try {
+        const items = await navigator.clipboard.read();
+        const blobs = [];
+        for (const item of items) {
+          const typ = item.types.find((t) => t.startsWith("image/"));
+          if (typ) blobs.push(await item.getType(typ));
+        }
+        if (blobs.length) nimm(blobs);
+        else alertHinweis("In der Zwischenablage ist kein Bild.");
+      } catch (err) {
+        feld.focus();
+        alertHinweis("Zugriff auf die Zwischenablage nicht erlaubt. Tippe lange ins Feld darunter und wähle „Einfügen“.");
+      }
+    });
+    ["dragenter", "dragover"].forEach((t) => ablage.addEventListener(t, (e) => { e.preventDefault(); ablage.classList.add("ueber"); }));
+    ["dragleave", "drop"].forEach((t) => ablage.addEventListener(t, () => ablage.classList.remove("ueber")));
+    ablage.addEventListener("drop", (e) => { e.preventDefault(); nimm(e.dataTransfer.files); });
+    const form = document.getElementById("screenshot-form");
+    form.addEventListener("submit", () => { knopf.disabled = true; knopf.textContent = "Texterkennung läuft …"; });
+    function alertHinweis(text) {
+      let p = document.getElementById("ablage-hinweis");
+      if (!p) { p = document.createElement("p"); p.id = "ablage-hinweis"; p.className = "flash warn"; p.style.margin = "0"; ablage.append(p); }
+      p.textContent = text;
+    }
+  }
+
+  // Dashboard: Unterkategorien auf- und zuklappen (Zustand je Gerät merken)
+  const offenKey = "ft-kat-offen";
+  let offen = [];
+  try { offen = JSON.parse(localStorage.getItem(offenKey) || "[]"); } catch (e) { offen = []; }
+  document.querySelectorAll(".aufklapper").forEach((btn) => {
+    const ziel = document.getElementById(btn.getAttribute("aria-controls"));
+    const name = btn.getAttribute("aria-label");
+    const setze = (an) => { btn.setAttribute("aria-expanded", an ? "true" : "false"); ziel.hidden = !an; };
+    if (offen.includes(name)) setze(true);
+    btn.addEventListener("click", () => {
+      const an = btn.getAttribute("aria-expanded") !== "true";
+      setze(an);
+      offen = offen.filter((x) => x !== name);
+      if (an) offen.push(name);
+      try { localStorage.setItem(offenKey, JSON.stringify(offen)); } catch (e) { /* egal */ }
+    });
+  });
 });
 
 // Installierbare App: Service Worker nur in sicherem Kontext (HTTPS mit vertrautem Zertifikat)
