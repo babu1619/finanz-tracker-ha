@@ -4,6 +4,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("form[data-frage]").forEach((f) => {
     f.addEventListener("submit", (e) => { if (!window.confirm(f.dataset.frage)) e.preventDefault(); });
   });
+  document.querySelectorAll("button[data-frage]").forEach((b) => {
+    b.addEventListener("click", (e) => { if (!window.confirm(b.dataset.frage)) e.preventDefault(); });
+  });
 
   // Alle auswählen in Tabellen
   const alle = document.getElementById("alle");
@@ -429,9 +432,19 @@ document.addEventListener("DOMContentLoaded", () => {
       dateien.forEach((f, i) => {
         const box = document.createElement("div");
         box.className = "vorschaubild";
-        const img = document.createElement("img");
-        img.src = URL.createObjectURL(f);
-        img.alt = `Screenshot ${i + 1}`;
+        let img;
+        if (f.type === "application/pdf" || /\.pdf$/i.test(f.name || "")) {
+          img = document.createElement("div");
+          img.className = "pdf-symbol";
+          img.innerHTML = "<b>PDF</b>";
+          const n = document.createElement("span");
+          n.textContent = f.name;
+          img.append(n);
+        } else {
+          img = document.createElement("img");
+          img.src = URL.createObjectURL(f);
+          img.alt = `Screenshot ${i + 1}`;
+        }
         const weg = document.createElement("button");
         weg.type = "button";
         weg.textContent = "✕";
@@ -445,7 +458,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const nimm = (liste) => {
       let n = 0;
       Array.from(liste).forEach((f) => {
-        if (!f.type.startsWith("image/") || dateien.length >= 10) return;
+        const istPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name || "");
+        if ((!f.type.startsWith("image/") && !istPdf) || dateien.length >= 10) return;
+        if (istPdf) { dateien.push(f); return; }
         const endung = (f.type.split("/")[1] || "png").replace("jpeg", "jpg");
         dateien.push(f.name && f.name !== "image.png" ? f : new File([f], `screenshot-${Date.now()}-${n++}.${endung}`, { type: f.type }));
       });
@@ -454,7 +469,7 @@ document.addEventListener("DOMContentLoaded", () => {
     input.addEventListener("change", () => { nimm(input.files); });
     // Strg+V überall auf der Seite und Einfügen ins Feld (Android: lange tippen → Einfügen)
     document.addEventListener("paste", (e) => {
-      const bilder = Array.from(e.clipboardData ? e.clipboardData.files : []).filter((f) => f.type.startsWith("image/"));
+      const bilder = Array.from(e.clipboardData ? e.clipboardData.files : []).filter((f) => f.type.startsWith("image/") || f.type === "application/pdf");
       if (bilder.length) { e.preventDefault(); nimm(bilder); }
       setTimeout(() => { feld.innerHTML = ""; }, 0);
     });
@@ -488,6 +503,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ["dragenter", "dragover"].forEach((t) => ablage.addEventListener(t, (e) => { e.preventDefault(); ablage.classList.add("ueber"); }));
     ["dragleave", "drop"].forEach((t) => ablage.addEventListener(t, () => ablage.classList.remove("ueber")));
     ablage.addEventListener("drop", (e) => { e.preventDefault(); nimm(e.dataTransfer.files); });
+    if (input.files.length) nimm(input.files);
     const form = document.getElementById("screenshot-form");
     form.addEventListener("submit", () => { knopf.disabled = true; knopf.textContent = "Texterkennung läuft …"; });
     function alertHinweis(text) {

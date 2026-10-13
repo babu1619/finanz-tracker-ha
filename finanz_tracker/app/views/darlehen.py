@@ -5,7 +5,7 @@ from flask import Blueprint, abort, g, redirect, render_template, request, url_f
 
 from .. import auth
 from ..db import q, q1, exe, commit, log_aenderung
-from ..services import darlehen as dl, importer
+from ..services import bausparen as bs, darlehen as dl, importer
 from ..util import aktueller_monat, ist_monat, monat_plus, parse_euro_eingabe
 from . import melde, int_oder_none
 
@@ -52,7 +52,9 @@ def index():
             vergleich = dl.vergleich([d for d in darlehen if d["aktiv"]], cent, aktueller_monat()) if cent else None
         except ValueError:
             melde("Ungültiger Betrag.", "warn")
-    return render_template("darlehen.html", karten=karten, ohne=ohne, gesamt=gesamt, immobilien=for_imm,
+    bauspar = [bs.kennzahlen(v) for v in bs.alle()]
+    return render_template("darlehen.html", bauspar=bauspar,
+                           bauspar_guthaben=sum(b["guthaben"] for b in bauspar if b["v"]["aktiv"]), karten=karten, ohne=ohne, gesamt=gesamt, immobilien=for_imm,
                            verlauf=verlauf, max_verlauf=max([v["rest"] for v in verlauf] + [1]), heute_jahr=date.today().year,
                            vergleich=vergleich, vergleich_betrag=betrag or "")
 
@@ -76,7 +78,11 @@ def detail(kid):
         except ValueError:
             melde("Ungültiger Betrag.", "warn")
     konto_saldo = importer.kontostand(kid)
-    hat_buchungen = q1("SELECT 1 FROM buchung WHERE konto_id = ? LIMIT 1", (kid,)) is not None
+    hat_buchungen = dl.hat_importierte_buchungen(kid)
+    ereignis_info = {e["id"]: e for e in q("""SELECT e.id, zb.buchungsdatum AS zahl_datum, zk.name AS zahl_konto,
+                                                     e.zahlung_buchung_id, e.buchung_id
+                                              FROM darlehen_ereignis e LEFT JOIN buchung zb ON zb.id = e.zahlung_buchung_id
+                                              LEFT JOIN konto zk ON zk.id = zb.konto_id WHERE e.konto_id = ?""", (kid,))}
     jahre = {}
     for z in k["plan"]:
         j = jahre.setdefault(z["monat"][:4], {"zins": 0, "tilgung": 0, "sonder": 0, "rest": 0})
@@ -85,7 +91,8 @@ def detail(kid):
         j["sonder"] += z["sonder"]
         j["rest"] = z["rest"]
     return render_template("darlehen_detail.html", k=k, d=d, sim=sim, jahre=jahre, konto_saldo=konto_saldo,
-                           hat_buchungen=hat_buchungen, monat=aktueller_monat(), a=a)
+                           hat_buchungen=hat_buchungen, monat=aktueller_monat(), a=a,
+                           ereignis_info=ereignis_info, bausparvertraege=bs.alle(darlehen_konto_id=kid))
 
 
 @bp.route("/<int:kid>/konditionen", methods=["GET", "POST"])
@@ -135,8 +142,8 @@ def ereignis(kid):
         abort(404)
     f = request.form
     if f.get("aktion") == "loeschen":
-        exe("DELETE FROM darlehen_ereignis WHERE id = ? AND konto_id = ?", (int_oder_none(f.get("eid")), kid))
-        melde("Eintrag entfernt.")
+        dl.loesche_ereignis(kid, int_oder_none(f.get("eid")) or 0)
+        melde("Eintrag entfernt (eine dazu angelegte Buchung im Darlehenskonto ebenfalls).")
     else:
         try:
             betrag = abs(parse_euro_eingabe(f.get("betrag", "")))
@@ -145,13 +152,46 @@ def ereignis(kid):
             melde("Datum und Betrag prüfen.", "warn")
             return redirect(url_for("darlehen.detail", kid=kid))
         art = "abgleich" if f.get("art") == "abgleich" else "sondertilgung"
-        if betrag or art == "abgleich":
+        if art == "sondertilgung" and betrag:
+            eid = dl.erfasse_sondertilgung(kid, datum, betrag, f.get("notiz", "").strip() or None,
+                                           buchung_anlegen=bool(f.get("buchung_anlegen")))
+            e = q1("SELECT * FROM darlehen_ereignis WHERE id = ?", (eid,))
+            teile = ["Sondertilgung eingetragen"]
+            if e["buchung_id"]:
+                teile.append("als Buchung im Darlehenskonto angelegt")
+            if e["zahlung_buchung_id"]:
+                teile.append("mit der Zahlung im Zahlkonto verknüpft")
+            melde(", ".join(teile) + ".")
+        elif art == "abgleich":
             exe("INSERT INTO darlehen_ereignis (konto_id, datum, art, betrag_cent, notiz) VALUES (?,?,?,?,?)",
                 (kid, datum, art, betrag, f.get("notiz", "").strip() or None))
-            melde("Sondertilgung eingetragen." if art == "sondertilgung" else "Restschuld laut Bank eingetragen – der Plan rechnet ab diesem Monat damit weiter.")
+            melde("Restschuld laut Bank eingetragen – der Plan rechnet ab diesem Monat damit weiter.")
     log_aenderung(g.user["id"], "darlehen", kid, "ereignis", dict(f))
     commit()
     return redirect(url_for("darlehen.detail", kid=kid))
+
+
+@bp.route("/sondertilgung-aus-buchung/<int:bid>", methods=["POST"])
+@auth.schreibrecht
+def sondertilgung_aus_buchung(bid):
+    """Eine (importierte) Abbuchung, z. B. vom Girokonto, als Sondertilgung für ein Darlehen kennzeichnen."""
+    b = q1("SELECT * FROM buchung WHERE id = ?", (bid,))
+    kid = int_oder_none(request.form.get("darlehen"))
+    zurueck = request.form.get("zurueck") or url_for("buchungen.bearbeiten", bid=bid)
+    if not b or not auth.konto_sichtbar(b["konto_id"]) or kid not in _konten() or not dl.lade(kid):
+        abort(404)
+    if b["betrag_cent"] >= 0:
+        melde("Nur Abbuchungen können eine Sondertilgung sein.", "warn")
+        return redirect(zurueck)
+    if dl.sondertilgung_zu_buchung(bid):
+        melde("Diese Buchung ist bereits als Sondertilgung erfasst.", "warn")
+        return redirect(zurueck)
+    dl.erfasse_sondertilgung(kid, b["buchungsdatum"], -b["betrag_cent"], b["notiz"],
+                             buchung_anlegen=bool(request.form.get("buchung_anlegen")), zahlung_buchung_id=bid)
+    log_aenderung(g.user["id"], "darlehen", kid, "sondertilgung", {"buchung": bid})
+    commit()
+    melde("Als Sondertilgung erfasst – der Tilgungsplan rechnet ab diesem Monat damit.")
+    return redirect(zurueck)
 
 
 @bp.route("/immobilie", methods=["POST"])
@@ -194,3 +234,106 @@ def hinweise(sichtbar) -> list[dict]:
             erg.append({"kid": d["konto_id"], "text": f"Zinsbindung {d['name']} endet {d['zinsbindung_bis']}"
                         f" – Anschlussfinanzierung planen"})
     return erg
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Bausparverträge
+
+def _prozent(text, standard=None):
+    text = (text or "").strip().replace("%", "").replace("‰", "").replace(",", ".")
+    if not text:
+        return standard
+    return float(text)
+
+
+@bp.route("/bausparen/neu", methods=["GET", "POST"])
+@bp.route("/bausparen/<int:vid>/bearbeiten", methods=["GET", "POST"])
+@auth.schreibrecht
+def bausparvertrag(vid=None):
+    v = bs.lade(vid) if vid else None
+    if vid and not v:
+        abort(404)
+    if request.method == "POST":
+        f = request.form
+        if f.get("aktion") == "loeschen" and v:
+            exe("DELETE FROM bausparvertrag WHERE id = ?", (vid,))
+            log_aenderung(g.user["id"], "bausparvertrag", vid, "geloescht")
+            commit()
+            melde("Bausparvertrag gelöscht.")
+            return redirect(url_for("darlehen.index"))
+        try:
+            summe = abs(parse_euro_eingabe(f.get("bausparsumme", "")))
+            rate = abs(parse_euro_eingabe(f.get("sparrate", "")))
+            gzins = _prozent(f.get("guthabenzins"), 0.0)
+            dzins = _prozent(f.get("darlehenszins"))
+            tilg = _prozent(f.get("tilgungsbeitrag"))
+            mindest = _prozent(f.get("mindestguthaben"), 40.0)
+            start = abs(parse_euro_eingabe(f.get("startguthaben", ""))) if not v else 0
+        except ValueError:
+            melde("Bitte Zahlen prüfen (Beträge wie 50.000; Zinsen wie 0,1 oder 2,35).", "warn")
+            return redirect(request.full_path)
+        name = f.get("name", "").strip()
+        beginn = f.get("beginn", "")
+        if not (name and summe and ist_monat(beginn)):
+            melde("Name, Bausparsumme und Vertragsbeginn sind Pflicht.", "warn")
+            return redirect(request.full_path)
+        zut = f.get("zuteilung_gewuenscht") if ist_monat(f.get("zuteilung_gewuenscht", "")) else None
+        dk = int_oder_none(f.get("darlehen_konto_id"))
+        if dk and dk not in _konten():
+            dk = None
+        werte = (name, f.get("institut", "").strip() or None, f.get("vertragsnummer", "").strip() or None, summe, beginn,
+                 rate, gzins, dzins, tilg, mindest, zut, dk, int_oder_none(f.get("immobilie_id")),
+                 1 if f.get("aktiv") or not v else 0, f.get("notiz", "").strip() or None)
+        if v:
+            exe("""UPDATE bausparvertrag SET name=?, institut=?, vertragsnummer=?, bausparsumme_cent=?, beginn=?, sparrate_cent=?,
+                   guthabenzins=?, darlehenszins=?, tilgungsbeitrag_promille=?, mindestguthaben_prozent=?, zuteilung_gewuenscht=?,
+                   darlehen_konto_id=?, immobilie_id=?, aktiv=?, notiz=? WHERE id = ?""", (*werte, vid))
+        else:
+            vid = exe("""INSERT INTO bausparvertrag (name, institut, vertragsnummer, bausparsumme_cent, beginn, sparrate_cent,
+                         guthabenzins, darlehenszins, tilgungsbeitrag_promille, mindestguthaben_prozent, zuteilung_gewuenscht,
+                         darlehen_konto_id, immobilie_id, aktiv, notiz) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", werte)
+            if start:
+                exe("INSERT INTO bauspar_stand (vertrag_id, datum, guthaben_cent, notiz) VALUES (?,?,?,?)",
+                    (vid, f.get("start_datum") or date.today().isoformat(), start, "beim Anlegen"))
+        log_aenderung(g.user["id"], "bausparvertrag", vid, "gespeichert", dict(f))
+        commit()
+        melde("Bausparvertrag gespeichert.")
+        return redirect(url_for("darlehen.bausparen_detail", vid=vid))
+    return render_template("bausparvertrag.html", v=v, darlehen=dl.alle(_konten()),
+                           immobilien=q("SELECT * FROM immobilie ORDER BY name"), heute=date.today().isoformat(),
+                           vorwahl_darlehen=int_oder_none(request.args.get("darlehen")))
+
+
+@bp.route("/bausparen/<int:vid>")
+@auth.login_required
+def bausparen_detail(vid):
+    v = bs.lade(vid)
+    if not v:
+        abort(404)
+    return render_template("bausparen_detail.html", v=v, k=bs.kennzahlen(v), staende=bs.staende(vid),
+                           heute=date.today().isoformat(), monat=aktueller_monat())
+
+
+@bp.route("/bausparen/<int:vid>/stand", methods=["POST"])
+@auth.schreibrecht
+def bauspar_stand(vid):
+    if not bs.lade(vid):
+        abort(404)
+    f = request.form
+    if f.get("loeschen"):
+        exe("DELETE FROM bauspar_stand WHERE id = ? AND vertrag_id = ?", (int_oder_none(f["loeschen"]), vid))
+        commit()
+        melde("Stand entfernt.")
+        return redirect(url_for("darlehen.bausparen_detail", vid=vid))
+    try:
+        betrag = abs(parse_euro_eingabe(f.get("guthaben", "")))
+        datum = date.fromisoformat(f.get("datum", "")).isoformat()
+    except ValueError:
+        melde("Datum und Guthaben prüfen.", "warn")
+        return redirect(url_for("darlehen.bausparen_detail", vid=vid))
+    exe("INSERT INTO bauspar_stand (vertrag_id, datum, guthaben_cent, notiz) VALUES (?,?,?,?)",
+        (vid, datum, betrag, f.get("notiz", "").strip() or None))
+    log_aenderung(g.user["id"], "bausparvertrag", vid, "stand", dict(f))
+    commit()
+    melde("Guthabenstand eingetragen – die Prognose rechnet ab diesem Stand weiter.")
+    return redirect(url_for("darlehen.bausparen_detail", vid=vid))

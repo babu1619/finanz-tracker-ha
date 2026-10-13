@@ -87,6 +87,20 @@
   </form>
   {% endif %}
 </div>
+{% if sondertilgung %}
+<div class="karte"><span class="tag ok">Sondertilgung</span> für <a href="{{ url_for('darlehen.detail', kid=sondertilgung.konto_id) }}">{{ sondertilgung.darlehen_name }}</a> am {{ sondertilgung.datum|datum }} über {{ sondertilgung.betrag_cent|euro }} – im Tilgungsplan berücksichtigt.</div>
+{% elif darf_schreiben and darlehen_liste %}
+<details class="karte"><summary><b>Als Sondertilgung erfassen</b> <span class="leise">– falls diese Zahlung an ein Darlehen ging</span></summary>
+<form method="post" action="{{ url_for('darlehen.sondertilgung_aus_buchung', bid=b.id) }}" style="display:flex;flex-direction:column;gap:10px;margin-top:10px">{{ csrf() }}
+  <input type="hidden" name="zurueck" value="{{ request.full_path }}">
+  <p class="leise" style="margin:0">War diese Zahlung eine Sondertilgung? Dann rechnet der Tilgungsplan des Darlehens ab diesem Monat damit. Die Buchung hier bleibt, wie sie ist.</p>
+  <div class="formreihe" style="align-items:flex-end">
+    <label class="feld">Darlehen<select name="darlehen">{% for d in darlehen_liste %}<option value="{{ d.konto_id }}" {{ 'selected' if d.zahlkonto_id == b.konto_id }}>{{ d.name }}</option>{% endfor %}</select></label>
+    <label class="check" style="flex:1 1 220px"><input type="checkbox" name="buchung_anlegen" value="1" checked> Gegenbuchung im Darlehenskonto anlegen</label>
+    <button class="btn" type="submit">Als Sondertilgung erfassen</button>
+  </div>
+</form></details>
+{% endif %}
 {% if darf_schreiben and b.manuell_erfasst %}
 <form method="post" class="karte" data-frage="Diese bar erfasste Buchung löschen?">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen"><input type="hidden" name="zurueck" value="{{ zurueck }}">
   <button class="btn gefahr" type="submit">Bar erfasste Buchung löschen</button></form>

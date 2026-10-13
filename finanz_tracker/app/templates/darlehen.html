@@ -2,7 +2,7 @@
 {% block titel %}Darlehen{% endblock %}
 {% block inhalt %}
 <div class="kopf"><h1>Darlehen</h1><span class="leise">eigener Bereich – fließt nicht in Haupt-Dashboard und Summen ein</span>
-  {% if user.rolle == 'admin' %}<div class="rechts"><a class="btn" href="{{ url_for('konten.neu', typ='darlehen') }}">Darlehenskonto anlegen</a></div>{% endif %}</div>
+  <div class="rechts">{% if darf_schreiben %}<a class="btn" href="{{ url_for('darlehen.bausparvertrag') }}">Bausparvertrag anlegen</a>{% endif %}{% if user.rolle == 'admin' %}<a class="btn" href="{{ url_for('konten.neu', typ='darlehen') }}">Darlehenskonto anlegen</a>{% endif %}</div></div>
 
 {% if ohne %}<div class="flash warn">Ohne Konditionen: {% for k in ohne %}<a href="{{ url_for('darlehen.konditionen', kid=k.id) }}">{{ k.name }}</a>{{ ', ' if not loop.last }}{% endfor %} – Konditionen eintragen, damit Plan und Simulation funktionieren.</div>{% endif %}
 
@@ -33,6 +33,23 @@
   <div class="karte leer" style="grid-column:1/-1">Noch keine Darlehen mit Konditionen. Lege unter Konten ein Konto vom Typ „Darlehen“ an und trage dann hier die Konditionen ein.</div>
 {% endfor %}
 </div>
+
+{% if bauspar %}
+<div class="kopf" style="margin-top:6px"><h2 style="margin:0">Bausparverträge</h2><span class="leise">Guthaben gesamt {{ bauspar_guthaben|euro_rund }}</span></div>
+<div class="raster">
+{% for b in bauspar %}
+  <a class="karte ziel" href="{{ url_for('darlehen.bausparen_detail', vid=b.v.id) }}" style="color:inherit;text-decoration:none;{{ 'opacity:.55' if not b.v.aktiv }}">
+    <div class="kopf"><b>{{ b.v.name }}</b><span class="rechts tag info">Bausparen</span></div>
+    <div class="leise">{{ b.v.institut or '' }}{% if b.v.darlehen_name %} · löst {{ b.v.darlehen_name }} ab{% endif %}</div>
+    <div class="mono" style="font-size:22px;font-weight:600">{{ b.guthaben|euro_rund }}</div>
+    <div class="fortschritt"><span style="width: {{ (b.anteil * 100)|round(1) }}%"></span></div>
+    <div class="leise">{{ (b.anteil * 100)|round|int }} % des Mindestguthabens · Summe {{ b.v.bausparsumme_cent|euro_rund }}</div>
+    <div class="leise">{% if b.zuteilung %}Zuteilung voraussichtlich {{ b.zuteilung.monat|monat }}{% else %}Zuteilung im Planungszeitraum nicht erreicht{% endif %}</div>
+    {% if b.abloesung %}{% if b.abloesung.luecke > 0 %}<span class="tag warn">Lücke zur Restschuld {{ b.abloesung.luecke|euro_rund }}</span>{% else %}<span class="tag ok">reicht zur Ablösung</span>{% endif %}{% endif %}
+  </a>
+{% endfor %}
+</div>
+{% endif %}
 
 {% if verlauf %}
 <section class="karte">

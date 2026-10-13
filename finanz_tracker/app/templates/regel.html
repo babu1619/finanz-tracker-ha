@@ -58,7 +58,13 @@
     </fieldset>
 
     {% if regel %}<label class="check"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if regel.aktiv }}> Regel aktiv</label>{% else %}<input type="hidden" name="aktiv" value="1">{% endif %}
-    <label class="check"><input type="checkbox" name="anwenden" value="1"> Nach dem Speichern auf alle nicht manuell zugeordneten Buchungen anwenden</label>
+    <label class="feld">Nach dem Speichern anwenden
+      <select name="anwenden">
+        <option value="">nicht – nur für künftige Importe</option>
+        <option value="offen">auf offene und automatisch zugeordnete Buchungen (alle Regeln)</option>
+        <option value="alle" {{ 'selected' if test and test.anders }}>diese Regel auf alle passenden Buchungen – auch manuell oder per anderer Regel zugeordnete</option>
+      </select></label>
+    <p class="leise klein" style="margin:-6px 0 0">Aufgeteilte Buchungen und bereits verknüpfte Umbuchungen bleiben in jedem Fall unverändert. Vorher „Gegen bestehende Buchungen testen“ zeigt, was sich ändern würde.</p>
     <div class="formreihe">
       <button class="btn primaer" type="submit" name="aktion" value="speichern">Speichern</button>
       <button class="btn" type="submit" name="aktion" value="testen">Gegen bestehende Buchungen testen</button>
@@ -69,7 +75,7 @@
     {% if test %}
     <div class="karte">
       <h2>Testergebnis</h2>
-      <p>Trifft <b>{{ test.treffer }}</b> Buchungen{% if akt.kategorie_id %}, davon <b>{{ test.anders }}</b> heute anders zugeordnet{% endif %}.</p>
+      <p>Trifft <b>{{ test.treffer }}</b> Buchungen{% if akt.kategorie_id %}, davon <b>{{ test.anders }}</b> heute anders zugeordnet{% if test.manuell or test.andere_regel %} ({% if test.manuell %}{{ test.manuell }} manuell{% endif %}{% if test.manuell and test.andere_regel %}, {% endif %}{% if test.andere_regel %}{{ test.andere_regel }} per anderer Regel{% endif %} – werden nur mit „auch manuell zugeordnete“ geändert){% endif %}{% endif %}.</p>
       {% if test.beispiele %}<table class="tab"><tbody>{% for b in test.beispiele %}
         <tr><td style="padding-left:0">{{ b.buchungsdatum|datum }} · {{ b.gegenpartei|truncate(30) }}<div class="leise">heute: {{ b.kat_pfad or 'ohne Kategorie' }}</div></td>
             <td class="betrag" style="padding-right:0">{{ b.betrag_cent|euro_vz }}</td></tr>{% endfor %}</tbody></table>{% endif %}

@@ -39,8 +39,8 @@ def index():
         for k in q(f"SELECT * FROM konto WHERE id IN ({marks}) AND aktiv = 1 ORDER BY typ = 'darlehen', sortierung, name",
                    sichtbar):
             saldo = depot.wert(k["id"]) if k["typ"] == "depot" else importer.kontostand(k["id"])
-            if k["typ"] == "darlehen" and not q("SELECT 1 FROM buchung WHERE konto_id = ? LIMIT 1", (k["id"],)):
-                from ..services import darlehen as dl
+            from ..services import darlehen as dl
+            if k["typ"] == "darlehen" and not dl.hat_importierte_buchungen(k["id"]):
                 d = dl.lade(k["id"])
                 if d:  # ohne importierte Buchungen: Restschuld laut Plan
                     saldo = -dl.kennzahlen(d)["restschuld"]

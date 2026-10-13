@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% macro zahl(x) %}{{ ('%g'|format(x)).replace('.', ',') if x is not none else '' }}{% endmacro %}
+{% macro euro_feld(c) %}{{ ('%.2f'|format(c / 100)).replace('.', ',') if c else '' }}{% endmacro %}
+{% block titel %}{{ v.name if v else 'Bausparvertrag anlegen' }}{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('darlehen.bausparen_detail', vid=v.id) if v else url_for('darlehen.index') }}">‹ zurück</a></div>
+<form method="post" class="karte" style="display:flex;flex-direction:column;gap:12px;max-width:760px">{{ csrf() }}
+  <h1>{{ 'Bausparvertrag bearbeiten' if v else 'Bausparvertrag anlegen' }}</h1>
+  <p class="leise" style="margin:0">Alle Angaben stehen im Bausparvertrag bzw. im Jahreskontoauszug der Bausparkasse.</p>
+  <div class="formreihe">
+    <label class="feld" style="flex:2 1 220px">Name<input type="text" name="name" required value="{{ v.name if v }}" placeholder="z. B. Bausparen Anschlussfinanzierung"></label>
+    <label class="feld">Bausparkasse<input type="text" name="institut" value="{{ v.institut or '' if v }}" placeholder="z. B. Schwäbisch Hall"></label>
+    <label class="feld">Vertragsnummer<input type="text" name="vertragsnummer" value="{{ v.vertragsnummer or '' if v }}"></label>
+  </div>
+  <div class="formreihe">
+    <label class="feld">Bausparsumme<input type="text" name="bausparsumme" inputmode="decimal" required value="{{ euro_feld(v.bausparsumme_cent) if v }}" placeholder="z. B. 100.000"></label>
+    <label class="feld">Vertragsbeginn<input type="month" name="beginn" required value="{{ v.beginn if v }}" style="min-height:40px"></label>
+    <label class="feld">Sparrate pro Monat<input type="text" name="sparrate" inputmode="decimal" value="{{ euro_feld(v.sparrate_cent) if v }}" placeholder="z. B. 400"></label>
+  </div>
+  {% if not v %}
+  <div class="formreihe">
+    <label class="feld">Aktuelles Guthaben (optional)<input type="text" name="startguthaben" inputmode="decimal" placeholder="z. B. 12.345,67"></label>
+    <label class="feld">Stand vom<input type="date" name="start_datum" value="{{ heute }}" style="min-height:40px"></label>
+  </div>
+  {% endif %}
+  <fieldset class="formreihe" style="border:0;padding:0;margin:0">
+    <legend class="leise" style="margin-bottom:6px">Konditionen</legend>
+    <label class="feld">Guthabenzins p. a. in %<input type="text" name="guthabenzins" inputmode="decimal" value="{{ zahl(v.guthabenzins) if v }}" placeholder="z. B. 0,1"></label>
+    <label class="feld">Mindestguthaben für Zuteilung in %<input type="text" name="mindestguthaben" inputmode="decimal" value="{{ zahl(v.mindestguthaben_prozent) if v else '40' }}"></label>
+    <label class="feld">Darlehenszins p. a. in %<input type="text" name="darlehenszins" inputmode="decimal" value="{{ zahl(v.darlehenszins) if v }}" placeholder="z. B. 2,35"></label>
+    <label class="feld">Zins- und Tilgungsbeitrag in ‰<input type="text" name="tilgungsbeitrag" inputmode="decimal" value="{{ zahl(v.tilgungsbeitrag_promille) if v }}" placeholder="z. B. 6 (= 6 € je 1.000 €)"></label>
+  </fieldset>
+  <div class="formreihe">
+    <label class="feld">Löst Darlehen ab<select name="darlehen_konto_id"><option value="">–</option>{% for d in darlehen %}<option value="{{ d.konto_id }}" {{ 'selected' if (v and v.darlehen_konto_id == d.konto_id) or (not v and vorwahl_darlehen == d.konto_id) }}>{{ d.name }}{% if d.zinsbindung_bis %} (Zinsbindung bis {{ d.zinsbindung_bis|monat }}){% endif %}</option>{% endfor %}</select></label>
+    <label class="feld">Zuteilung gewünscht ab<input type="month" name="zuteilung_gewuenscht" value="{{ v.zuteilung_gewuenscht or '' if v }}" style="min-height:40px"></label>
+    <label class="feld">Immobilie<select name="immobilie_id"><option value="">–</option>{% for i in immobilien %}<option value="{{ i.id }}" {{ 'selected' if v and v.immobilie_id == i.id }}>{{ i.name }}</option>{% endfor %}</select></label>
+  </div>
+  <p class="leise" style="margin:0">Ist ein Darlehen gewählt und kein Zuteilungstermin, plant das Tool die Zuteilung zum Ende der Zinsbindung und zeigt, ob Guthaben plus Bauspardarlehen für die Restschuld reichen.</p>
+  <label class="feld">Notiz<input type="text" name="notiz" value="{{ v.notiz or '' if v }}"></label>
+  {% if v %}<label class="check"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if v.aktiv }}> Vertrag aktiv</label>{% endif %}
+  <div class="formreihe"><button class="btn primaer" type="submit">Speichern</button></div>
+</form>
+{% if v %}
+<form method="post" class="karte" style="max-width:760px" data-frage="Bausparvertrag mit allen Guthabenständen löschen?">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen">
+  <button class="btn gefahr" type="submit">Bausparvertrag löschen</button></form>
+{% endif %}
+{% endblock %}

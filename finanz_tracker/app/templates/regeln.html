@@ -5,7 +5,8 @@
   <h1>Regeln</h1>
   <span class="leise">{{ rows|length }} Regeln · die erste passende Regel gewinnt · manuell zugeordnete Buchungen bleiben unberührt</span>
   {% if darf_schreiben %}<div class="rechts">
-    <form method="post" action="{{ url_for('regeln.anwenden') }}">{{ csrf() }}<button class="btn" type="submit">Alle Regeln jetzt anwenden</button></form>
+    <form method="post" action="{{ url_for('regeln.anwenden') }}" class="formreihe" style="align-items:center;gap:8px">{{ csrf() }}<button class="btn" type="submit">Alle Regeln jetzt anwenden</button>
+      <button class="btn" type="submit" name="auch_manuell" value="1" data-frage="Alle Regeln auch auf manuell zugeordnete Buchungen anwenden? Deine manuellen Zuordnungen werden dort überschrieben, wo eine Regel passt.">… auch auf manuell zugeordnete</button></form>
     <a class="btn primaer" href="{{ url_for('regeln.neu') }}">Regel anlegen</a></div>{% endif %}
 </div>
 <section class="karte ohne-rand">

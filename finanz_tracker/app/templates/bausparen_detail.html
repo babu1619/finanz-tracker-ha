@@ -1,0 +1,75 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% macro zahl(x) %}{{ ('%g'|format(x)).replace('.', ',') if x is not none else '–' }}{% endmacro %}
+{% block titel %}{{ v.name }}{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('darlehen.index') }}">‹ Darlehen</a>
+  {% if darf_schreiben %}<div class="rechts"><a class="btn" href="{{ url_for('darlehen.bausparvertrag', vid=v.id) }}">Bearbeiten</a></div>{% endif %}</div>
+<div class="kopf"><h1>{{ v.name }}</h1><span class="leise">Bausparvertrag{% if v.institut %} · {{ v.institut }}{% endif %}{% if v.vertragsnummer %} · Nr. {{ v.vertragsnummer }}{% endif %}{% if not v.aktiv %} · inaktiv{% endif %}</span></div>
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Guthaben</div><div class="wert">{{ k.guthaben|euro_rund }}</div>
+    <div class="unter">{% if k.letzter_stand %}Stand {{ k.letzter_stand.datum|datum }}{% if k.letzter_stand.datum[:7] < monat %} + Prognose{% endif %}{% else %}Prognose ab Vertragsbeginn{% endif %}</div></div>
+  <div class="kpi"><div class="label">Bausparsumme</div><div class="wert">{{ v.bausparsumme_cent|euro_rund }}</div>
+    <div class="unter">Sparrate {{ v.sparrate_cent|euro_rund }} / Monat · {{ zahl(v.guthabenzins) }} % Zins</div></div>
+  <div class="kpi"><div class="label">Zuteilung voraussichtlich</div><div class="wert">{{ k.zuteilung.monat|monat_kurz if k.zuteilung else '–' }}</div>
+    <div class="unter">Mindestguthaben {{ k.mindest|euro_rund }} ({{ zahl(v.mindestguthaben_prozent) }} %)</div></div>
+  <div class="kpi"><div class="label">Bauspardarlehen</div><div class="wert">{{ k.bauspardarlehen|euro_rund if k.bauspardarlehen is not none else '–' }}</div>
+    <div class="unter">{% if k.rate %}Rate {{ k.rate|euro_rund }} · {{ zahl(v.darlehenszins) }} %{% if k.ende %} · schuldenfrei {{ k.ende|monat_kurz }}{% endif %}{% else %}Tilgungsbeitrag nicht hinterlegt{% endif %}</div></div>
+</div>
+
+<section class="karte">
+  <div class="kopf"><h2 style="margin:0">Weg zur Zuteilung</h2><span class="rechts leise">{{ (k.anteil * 100)|round|int }} % des Mindestguthabens</span></div>
+  <div class="fortschritt" style="margin-top:10px"><span style="width: {{ (k.anteil * 100)|round(1) }}%"></span></div>
+  {% if not k.zuteilung %}<p class="leise" style="margin-bottom:0">Mit der aktuellen Sparrate wird das Mindestguthaben im Planungszeitraum nicht erreicht. Sparrate oder Mindestguthaben prüfen.</p>{% endif %}
+  {% if k.fehler %}<div class="flash warn" style="margin-top:10px">Der Tilgungsbeitrag deckt die Zinsen des Bauspardarlehens nicht – Angaben prüfen.</div>{% endif %}
+</section>
+
+{% if k.abloesung %}{% set a = k.abloesung %}
+<section class="karte">
+  <h2>Ablösung {{ k.darlehen.name }} zum {{ a.monat|monat }}</h2>
+  <div class="scroll"><table class="tab vergleich">
+    <tbody>
+      <tr><td style="padding-left:0">Restschuld des Darlehens laut Plan</td><td class="betrag">{{ a.restschuld|euro_rund }}</td></tr>
+      <tr><td style="padding-left:0">Bausparguthaben dann</td><td class="betrag">{{ a.guthaben|euro_rund }}</td></tr>
+      {% if a.zugeteilt %}<tr><td style="padding-left:0">+ Bauspardarlehen</td><td class="betrag">{{ (v.bausparsumme_cent - a.guthaben)|euro_rund }}</td></tr>{% endif %}
+      <tr><td style="padding-left:0"><b>{{ 'Verfügbar (Bausparsumme)' if a.zugeteilt else 'Verfügbar (nur Guthaben, noch nicht zugeteilt)' }}</b></td><td class="betrag"><b>{{ a.verfuegbar|euro_rund }}</b></td></tr>
+      <tr><td style="padding-left:0">{{ 'Es fehlen' if a.luecke > 0 else 'Überschuss' }}</td><td class="betrag {{ 'best' if a.luecke <= 0 }}" style="{{ 'color:var(--bad)' if a.luecke > 0 }}">{{ a.luecke|abs|euro_rund }}</td></tr>
+    </tbody></table></div>
+  {% if a.noetige_sparrate %}<div class="flash warn" style="margin-top:10px">Das Mindestguthaben wird erst {{ k.zuteilung.monat|monat if k.zuteilung else 'später' }} erreicht. Für eine Zuteilung bis {{ a.monat|monat }} wären etwa {{ a.noetige_sparrate|euro_rund }} pro Monat nötig (statt {{ v.sparrate_cent|euro_rund }}) – oder eine Sonderzahlung.</div>{% endif %}
+  <p class="leise" style="margin-bottom:0">{% if a.luecke > 0 %}Die Lücke muss zum Ende der Zinsbindung anders finanziert werden (Anschlussdarlehen, Sondertilgungen vorher, höhere Bausparsumme).{% else %}Guthaben und Bauspardarlehen reichen, um die Restschuld abzulösen.{% endif %} Annahme: Zuteilung wie oben berechnet, ohne Bewertungszahl der Bausparkasse.</p>
+</section>
+{% endif %}
+
+<div class="reihe">
+  <section class="karte breit ohne-rand">
+    <div class="kopf" style="padding:16px 16px 0"><h2 style="margin:0">Verlauf je Jahr</h2></div>
+    <div class="scroll"><table class="tab">
+      <thead><tr><th>Jahr</th><th style="text-align:right">Einzahlungen</th><th style="text-align:right">Zinsen</th><th style="text-align:right">Guthaben</th><th style="text-align:right">Darlehen Zins</th><th style="text-align:right">Darlehen Rest</th></tr></thead>
+      <tbody>{% for j, w in k.jahre.items() %}<tr style="{{ 'background:var(--accent-soft)' if j == monat[:4] }}">
+        <td class="mono">{{ j }}{% if k.zuteilung and j == k.zuteilung.monat[:4] %} <span class="tag ok">Zuteilung</span>{% endif %}</td>
+        <td class="betrag">{{ w.einzahlung|euro_rund if w.einzahlung else '' }}</td><td class="betrag">{{ w.zins|euro_rund if w.zins else '' }}</td>
+        <td class="betrag">{{ w.guthaben|euro_rund if w.guthaben else '' }}</td>
+        <td class="betrag">{{ w.darlehen_zins|euro_rund if w.darlehen_zins else '' }}</td><td class="betrag">{{ w.darlehen_rest|euro_rund if w.darlehen_rest is not none else '' }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+
+  <section class="karte schmal">
+    <h2>Guthabenstände</h2>
+    {% for s in staende %}
+    <div class="kopf" style="padding:6px 0;border-bottom:1px solid var(--line2)"><span class="mono">{{ s.datum|datum }}</span>
+      <b class="rechts mono">{{ s.guthaben_cent|euro }}</b>
+      {% if darf_schreiben %}<form method="post" action="{{ url_for('darlehen.bauspar_stand', vid=v.id) }}" data-frage="Stand entfernen?">{{ csrf() }}<button class="btn klein" type="submit" name="loeschen" value="{{ s.id }}" aria-label="entfernen">✕</button></form>{% endif %}</div>
+    {% else %}<p class="leise">Noch kein Stand eingetragen – die Prognose beginnt bei 0 € zum Vertragsbeginn.</p>{% endfor %}
+    {% if darf_schreiben %}
+    <form method="post" action="{{ url_for('darlehen.bauspar_stand', vid=v.id) }}" style="display:flex;flex-direction:column;gap:10px;margin-top:12px">{{ csrf() }}
+      <div class="formreihe">
+        <label class="feld">Guthaben<input type="text" name="guthaben" inputmode="decimal" required placeholder="z. B. 23.456,78"></label>
+        <label class="feld">Stand vom<input type="date" name="datum" value="{{ heute }}" required style="min-height:40px"></label>
+      </div>
+      <button class="btn primaer" type="submit">Stand eintragen</button>
+      <p class="leise" style="margin:0">Am besten einmal im Jahr aus dem Jahreskontoauszug – die Prognose rechnet dann von dort weiter.</p>
+    </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

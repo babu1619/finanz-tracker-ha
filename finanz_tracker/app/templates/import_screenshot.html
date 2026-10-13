@@ -1,8 +1,8 @@
 {% extends "base.html" %}{% from "_makros.html" import csrf with context %}
-{% block titel %}Screenshot einlesen{% endblock %}
+{% block titel %}Abrechnung oder Screenshot{% endblock %}
 {% block inhalt %}
 <div class="kopf"><a href="{{ url_for('importe.index') }}">‹ Import</a></div>
-<div class="kopf"><h1>Umsätze per Screenshot</h1><span class="leise">z. B. aus der Kreditkarten-App · Texterkennung lokal auf dem Home Assistant</span></div>
+<div class="kopf"><h1>Abrechnung oder Screenshot einlesen</h1><span class="leise">z. B. Kreditkarte ohne CSV · PDF-Abrechnung oder Screenshots der App · alles lokal auf dem Home Assistant</span></div>
 {% if not ocr_da %}<div class="flash warn">Die Texterkennung ist auf diesem System nicht installiert. Im Home-Assistant-Add-on ist sie ab Version 0.4.0 enthalten.</div>{% endif %}
 <div class="reihe">
   <form method="post" enctype="multipart/form-data" class="karte breit" id="screenshot-form" style="display:flex;flex-direction:column;gap:14px">
@@ -10,26 +10,27 @@
     <label class="feld">Konto<select name="konto_id">{% for k in konten %}<option value="{{ k.id }}" {{ 'selected' if k.id == konto_id }}>{{ k.name }}</option>{% endfor %}</select></label>
 
     <div class="ablage" id="ablage" tabindex="0" aria-label="Screenshots hier ablegen oder einfügen">
-      <div class="ablage-text"><b>Screenshot einfügen oder hierher ziehen</b>
+      <div class="ablage-text"><b>PDF-Abrechnung oder Screenshot einfügen bzw. hierher ziehen</b>
         <span class="leise">Am PC: Strg+V. Am Handy: unten lange ins Feld tippen und „Einfügen“ wählen.</span></div>
       <div class="ablage-knoepfe">
         <button type="button" class="btn" id="zwischenablage">Aus Zwischenablage einfügen</button>
-        <label class="btn">Bilder auswählen<input type="file" name="bilder" id="bilder" accept="image/*" multiple hidden></label>
+        <label class="btn">Dateien auswählen<input type="file" name="bilder" id="bilder" accept="image/*,application/pdf,.pdf" multiple hidden></label>
       </div>
       <div class="einfuegefeld" id="einfuegefeld" contenteditable="true" role="textbox" aria-label="Hier lange tippen und Einfügen wählen" data-platzhalter="Hier lange tippen → Einfügen"></div>
       <div class="vorschaubilder" id="vorschaubilder"></div>
     </div>
 
     <button class="btn primaer gross" type="submit" id="erkennen" disabled>Umsätze erkennen</button>
-    <p class="leise klein" style="margin:0">Bis zu 10 Bilder auf einmal; überlappende Screenshots (beim Scrollen) werden zusammengeführt. Gespeichert wird erst nach deiner Prüfung. Die Bilder selbst werden nicht aufbewahrt.</p>
+    <p class="leise klein" style="margin:0">Bis zu 10 Dateien auf einmal; überlappende Screenshots (beim Scrollen) werden zusammengeführt. Gespeichert wird erst nach deiner Prüfung. Die Dateien selbst werden nicht aufbewahrt.</p>
   </form>
   <section class="karte schmal">
     <h2>So klappt es am besten</h2>
     <ul class="leise" style="padding-left:18px;margin:0;display:flex;flex-direction:column;gap:6px">
-      <li>In der Banking-App die Umsatzliste öffnen und Screenshots machen; die Liste dazwischen so scrollen, dass sich die Bilder etwas überlappen.</li>
+      <li><b>Monatsabrechnung als PDF</b> ist der genaueste Weg: Beträge, beide Datumsangaben und der Saldo werden übernommen und abgeglichen. Auch ein Foto oder Ausschnitt der Abrechnung funktioniert.</li>
+      <li>Zwischen den Abrechnungen: in der Banking-App die Umsatzliste öffnen und Screenshots machen; die Liste dazwischen so scrollen, dass sich die Bilder etwas überlappen.</li>
       <li>Datum, Name und Betrag müssen vollständig zu sehen sein.</li>
       <li>Nur „gebuchte“ Umsätze werden vorausgewählt; vorgemerkte können sich noch ändern.</li>
-      <li>Bereits übernommene Umsätze erkennt das Tool beim nächsten Mal wieder.</li>
+      <li>Bereits übernommene Umsätze erkennt das Tool wieder – auch wenn sie erst per Screenshot und später mit der Abrechnung kommen (dann als „evtl. vorhanden“ markiert und nicht vorausgewählt).</li>
     </ul>
   </section>
 </div>

@@ -224,6 +224,7 @@ class Ablauf(unittest.TestCase):
         self._v03(db, kat_lebensmittel)
         self._v031(db)
         self._v040(db)
+        self._v050(db)
 
         # 11. Import rückgängig
         lauf = db.execute("SELECT id FROM importlauf WHERE anzahl_neu = 2 ORDER BY id").fetchone()["id"]
@@ -728,6 +729,152 @@ class Ablauf(unittest.TestCase):
         lauf = db.execute("SELECT id FROM importlauf WHERE konto_id = ?", (kk,)).fetchone()["id"]
         self.post(f"/import/lauf/{lauf}/rueckgaengig", {}, von=f"/import/lauf/{lauf}")
         self.assertEqual(db.execute("SELECT COUNT(*) FROM buchung WHERE konto_id = ?", (kk,)).fetchone()[0], 0)
+
+    def _v050(self, db):
+        """0.5.0: Kreditkartenabrechnung (PDF/Bild), Regeln auf manuelle Buchungen, Sondertilgung, Bausparen."""
+        import shutil as _sh
+        from datetime import date
+        from app.services import abrechnung, bausparen, darlehen as dl
+        kk = db.execute("SELECT id FROM konto WHERE typ = 'kreditkarte'").fetchone()["id"]
+        db.execute("DELETE FROM buchung WHERE konto_id = ?", (kk,))
+        db.commit()
+
+        # --- Abrechnungstabelle aus Wortpositionen (wie Texterkennung eines Fotos)
+        def w(text, x, y, h=20):
+            return {"text": text, "x": x, "y": y, "w": 11 * len(text), "h": h, "conf": 90}
+        ws = [w("Buchungs-", 163, 50), w("Transaktions-", 303, 50), w("Beschreibung", 690, 50), w("Karte", 1079, 50),
+              w("Alter", 1023, 105), w("Saldo", 1076, 105), w("-1.501,47", 1229, 105),
+              w("26.08.2026", 165, 150), w("24.08.2026", 317, 150), w("Kartenumsatz", 468, 150), w("3576", 1090, 150), w("-33,00", 1260, 150),
+              w("SUNSET", 467, 176), w("S.R.L.S.,", 544, 176), w("PASSIGNANO", 623, 176), w("SU", 766, 176),
+              w("31.08.2026", 164, 222), w("-", 330, 222), w("Gutschrift", 467, 222), w("-", 1100, 222), w("1.501,47", 1241, 222),
+              w("Kartenabrechnung", 468, 248), w("08/2026", 680, 248), w("Hanseatic", 468, 274), w("Bank", 577, 274),
+              w("Neuer", 1023, 330), w("Saldo", 1076, 330), w("-33,00", 1229, 330)]
+        e = abrechnung.auswerten(ws)
+        self.assertEqual((e["alter_saldo"], e["neuer_saldo"]), (-150147, -3300))
+        self.assertEqual([(u["datum"].isoformat(), u["valuta"].isoformat() if u["valuta"] else None, u["gegenpartei"],
+                           u["betrag_cent"]) for u in e["umsaetze"]],
+                         [("2026-08-26", "2026-08-24", "SUNSET S.R.L.S., PASSIGNANO SU", -3300),
+                          ("2026-08-31", None, "Hanseatic Bank", 150147)])
+        self.assertIn("Kartenabrechnung 08/2026", e["umsaetze"][1]["bank_kategorie"])
+
+        # --- PDF-Abrechnung über die Oberfläche (braucht pdftotext)
+        if _sh.which("pdftotext"):
+            pdf = (HIER / "beispiel_kreditkarte.pdf").read_bytes()
+            html = self.post("/import/screenshot", {"konto_id": str(kk), "bilder": (io.BytesIO(pdf), "abrechnung.pdf")},
+                             von=f"/import/screenshot?konto={kk}")
+            self.assertIn("stimmt mit dem neuen Saldo der Abrechnung überein", html)
+            self.assertIn("HP INSTANT INK DE, WWW.HP.COM", html)
+            nrn = re.findall(r'name="nr" value="(\d+)" checked', html)
+            self.assertEqual(len(nrn), 5)
+            daten = {"konto_id": str(kk), "anzahl_bilder": "1", "nr": nrn,
+                     "alter_saldo": re.search(r'name="alter_saldo" value="(-?\d+)"', html).group(1),
+                     "neuer_saldo": re.search(r'name="neuer_saldo" value="(-?\d+)"', html).group(1)}
+            for feld in ("hash", "datum", "partei", "bankkat", "betrag", "valuta"):
+                for nr, wert in re.findall(rf'name="{feld}_(\d+)"[^>]*?value="([^"]*)"', html):
+                    daten[f"{feld}_{nr}"] = wert.replace("&amp;", "&")
+            html = self.post("/import/screenshot/uebernehmen", daten, von=False)
+            self.assertIn("5 Umsätze übernommen", html)
+            self.assertIn("Saldoabgleich stimmt", html)
+            k = db.execute("SELECT startsaldo_cent FROM konto WHERE id = ?", (kk,)).fetchone()
+            self.assertEqual(k["startsaldo_cent"], -150147)
+            r = db.execute("SELECT valuta, verwendungszweck FROM buchung WHERE konto_id = ? AND gegenpartei LIKE 'SUNSET%'",
+                           (kk,)).fetchone()
+            self.assertEqual(r["valuta"], "2026-08-24")
+            self.assertIn("Umsatz vom 24.08.2026", r["verwendungszweck"])
+            # erneut hochgeladen: alles schon da
+            html = self.post("/import/screenshot", {"konto_id": str(kk), "bilder": (io.BytesIO(pdf), "abrechnung.pdf")},
+                             von=f"/import/screenshot?konto={kk}")
+            self.assertEqual(html.count("schon übernommen"), 5)
+            lauf = db.execute("SELECT id FROM importlauf WHERE konto_id = ? AND rueckgaengig = 0", (kk,)).fetchone()["id"]
+            self.post(f"/import/lauf/{lauf}/rueckgaengig", {}, von=f"/import/lauf/{lauf}")
+            db.execute("UPDATE konto SET startsaldo_cent = 0 WHERE id = ?", (kk,))
+            db.commit()
+
+        # --- Regel auf manuell zugeordnete Buchungen anwenden
+        kat = {r["pfad"]: r["id"] for r in db.execute("SELECT id, pfad FROM kategorie")}
+        b1 = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                        "abrechnungsmonat, kategorie_id, zuordnung_quelle, geprueft, dedup_hash) VALUES (1, '2026-10-02', -1999, "
+                        "'Fitnessstudio Muster', '', 'fitnessstudio muster', '2026-10', ?, 'manuell', 1, 'v050-r1')",
+                        (kat["Sonstiges"],)).lastrowid
+        db.commit()
+        regel = {"name": "Fitness", "feld0": "gegenpartei", "op0": "enthaelt", "wert0": "fitnessstudio",
+                 "kategorie_id": str(kat["Freizeit › Sport"]), "aktiv": "1"}
+        html = self.post("/regeln/neu", {**regel, "aktion": "testen"}, von="/regeln/neu")
+        self.assertIn("1 manuell", html)
+        html = self.post("/regeln/neu", {**regel, "aktion": "speichern", "anwenden": "offen"}, von="/regeln/neu")
+        self.assertEqual(db.execute("SELECT kategorie_id FROM buchung WHERE id = ?", (b1,)).fetchone()[0], kat["Sonstiges"])
+        rid = db.execute("SELECT id FROM regel WHERE name = 'Fitness'").fetchone()["id"]
+        html = self.post(f"/regeln/{rid}", {**regel, "aktion": "speichern", "anwenden": "alle"}, von=f"/regeln/{rid}")
+        self.assertIn("davon 1 vorher manuell", html)
+        r = db.execute("SELECT kategorie_id, zuordnung_quelle, regel_id FROM buchung WHERE id = ?", (b1,)).fetchone()
+        self.assertEqual(tuple(r), (kat["Freizeit › Sport"], "regel", rid))
+        # Liste: alle Regeln auch auf manuelle anwenden
+        db.execute("UPDATE buchung SET kategorie_id = ?, zuordnung_quelle = 'manuell' WHERE id = ?", (kat["Sonstiges"], b1))
+        db.commit()
+        html = self.post("/regeln/anwenden", {"auch_manuell": "1"}, von="/regeln/")
+        self.assertIn("vorher manuell", html)
+        self.assertEqual(db.execute("SELECT kategorie_id FROM buchung WHERE id = ?", (b1,)).fetchone()[0], kat["Freizeit › Sport"])
+        db.execute("DELETE FROM regel WHERE id = ?", (rid,))
+        db.execute("DELETE FROM buchung WHERE id = ?", (b1,))
+        db.commit()
+
+        # --- Sondertilgung als Buchung (Darlehen 3) und aus einer Abbuchung im Girokonto
+        html = self.post("/darlehen/3/ereignis", {"art": "sondertilgung", "datum": "2026-06-15", "betrag": "5.000",
+                                                   "buchung_anlegen": "1"}, von="/darlehen/3")
+        self.assertIn("als Buchung im Darlehenskonto angelegt", html)
+        e1 = db.execute("SELECT * FROM darlehen_ereignis WHERE konto_id = 3 AND betrag_cent = 500000").fetchone()
+        gb = db.execute("SELECT * FROM buchung WHERE id = ?", (e1["buchung_id"],)).fetchone()
+        self.assertEqual((gb["konto_id"], gb["betrag_cent"], gb["manuell_erfasst"]), (3, 500000, 1))
+        with self.app.app_context():
+            self.assertFalse(dl.hat_importierte_buchungen(3))
+            self.assertEqual(sum(z["sonder"] for z in dl.plan(dl.lade(3))), 500000)
+        self.assertIn("4.120 €", self.get("/?monat=2026-10"))  # Darlehen zählt weiter nicht ins Vermögen
+        zahlung = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                             "abrechnungsmonat, dedup_hash) VALUES (1, '2026-09-01', -300000, 'Musterbank Darlehen', 'Sondertilgung', "
+                             "'musterbank darlehen', '2026-09', 'v050-st')").lastrowid
+        db.commit()
+        html = self.get(f"/buchungen/{zahlung}")
+        self.assertIn("Als Sondertilgung erfassen", html)
+        html = self.post(f"/darlehen/sondertilgung-aus-buchung/{zahlung}", {"darlehen": "3", "buchung_anlegen": "1"},
+                         von=f"/buchungen/{zahlung}")
+        self.assertIn("Sondertilgung</span> für", html)
+        e2 = db.execute("SELECT * FROM darlehen_ereignis WHERE zahlung_buchung_id = ?", (zahlung,)).fetchone()
+        self.assertEqual((e2["betrag_cent"], e2["datum"]), (300000, "2026-09-01"))
+        self.assertIn("Zahlung Girokonto", self.get("/darlehen/3"))
+        for e in (e1, e2):
+            self.post("/darlehen/3/ereignis", {"aktion": "loeschen", "eid": str(e["id"])}, von="/darlehen/3")
+        self.assertIsNone(db.execute("SELECT 1 FROM buchung WHERE konto_id = 3 AND manuell_erfasst = 1").fetchone())
+        db.execute("DELETE FROM buchung WHERE id = ?", (zahlung,))
+        db.commit()
+
+        # --- Bausparvertrag: Prognose, Zuteilung, Ablösung des Darlehens zum Ende der Zinsbindung
+        html = self.post("/darlehen/bausparen/neu", {"name": "Bausparen Haus", "institut": "Musterbausparkasse",
+                                                      "bausparsumme": "150.000", "beginn": "2022-01", "sparrate": "600",
+                                                      "startguthaben": "30.000", "start_datum": "2026-09-30",
+                                                      "guthabenzins": "0,5", "mindestguthaben": "40", "darlehenszins": "2,5",
+                                                      "tilgungsbeitrag": "6", "darlehen_konto_id": "3"},
+                         von="/darlehen/bausparen/neu")
+        self.assertIn("Bausparvertrag gespeichert", html)
+        self.assertIn("Ablösung Baudarlehen", html)
+        vid = db.execute("SELECT id FROM bausparvertrag").fetchone()["id"]
+        with self.app.app_context():
+            v = bausparen.lade(vid)
+            k = bausparen.kennzahlen(v, heute=date(2026, 10, 13))
+            self.assertEqual(k["guthaben"], 3000000)
+            self.assertEqual(k["mindest"], 6000000)
+            self.assertEqual(k["zuteilung"]["monat"], "2030-12")  # zum Ende der Zinsbindung, Mindestguthaben vorher erreicht
+            self.assertGreaterEqual(k["zuteilung"]["guthaben"], 6000000)
+            self.assertEqual(k["rate"], 90000)
+            self.assertEqual(k["bauspardarlehen"], 15000000 - k["zuteilung"]["guthaben"])
+            self.assertEqual(k["darlehensphase"][-1]["rest"], 0)
+            self.assertTrue(k["abloesung"]["zugeteilt"])
+            self.assertEqual(k["abloesung"]["verfuegbar"], 15000000)
+        self.post(f"/darlehen/bausparen/{vid}/stand", {"guthaben": "31.000", "datum": "2026-10-10"},
+                  von=f"/darlehen/bausparen/{vid}")
+        html = self.get("/darlehen/")
+        self.assertIn("Bausparen Haus", html)
+        self.assertIn("31.000", html)
+        self.assertIn("Bausparvertrag zur Ablösung", self.get("/darlehen/3"))
 
     def test_csrf(self):
         r = self.c.post("/login", data={"name": "x", "passwort": "y"})

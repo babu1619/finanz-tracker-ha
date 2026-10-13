@@ -1,24 +1,27 @@
 {% extends "base.html" %}{% from "_makros.html" import csrf with context %}
-{% block titel %}Screenshot prüfen{% endblock %}
+{% block titel %}Umsätze prüfen{% endblock %}
 {% block inhalt %}
-<div class="kopf"><a href="{{ url_for('importe.screenshot', konto=konto.id) }}">‹ Andere Screenshots</a></div>
-<div class="kopf"><h1>Erkannte Umsätze prüfen</h1><span class="leise">{{ konto.name }} · {{ zeilen|length }} erkannt aus {{ anzahl_bilder }} Bild{{ 'ern' if anzahl_bilder != 1 }}</span></div>
+<div class="kopf"><a href="{{ url_for('importe.screenshot', konto=konto.id) }}">‹ Andere Dateien</a></div>
+<div class="kopf"><h1>Erkannte Umsätze prüfen</h1><span class="leise">{{ konto.name }} · {{ zeilen|length }} erkannt aus {{ anzahl_bilder }} Datei{{ 'en' if anzahl_bilder != 1 }}</span></div>
+{% for a in abgleiche %}{% set rechnung = a.alter + a.summe %}
+<div class="flash {{ 'ok' if rechnung == a.neuer else 'warn' }}">{% if abgleiche|length > 1 or anzahl_bilder > 1 %}{{ a.datei }}: {% endif %}Alter Saldo {{ a.alter|euro }} + erkannte Umsätze {{ a.summe|euro_vz }} = {{ rechnung|euro }}{% if rechnung == a.neuer %} – stimmt mit dem neuen Saldo der Abrechnung überein.{% else %}, laut Abrechnung {{ a.neuer|euro }} (Differenz {{ (rechnung - a.neuer)|euro_vz }}). Bitte Beträge prüfen – vielleicht fehlt eine Zeile oder eine Ziffer wurde falsch gelesen.{% endif %}</div>
+{% else %}{% if neuer_saldo is not none %}<div class="flash ok">Neuer Saldo laut Abrechnung: {{ neuer_saldo|euro }} – wird nach dem Übernehmen mit dem Kontostand abgeglichen.</div>{% endif %}{% endfor %}
 {% for f in fehler %}<div class="flash warn">{{ f }}</div>{% endfor %}
 
 {% if zeilen %}
 <form method="post" action="{{ url_for('importe.screenshot_uebernehmen') }}" class="karte ohne-rand">
-  {{ csrf() }}<input type="hidden" name="konto_id" value="{{ konto.id }}"><input type="hidden" name="anzahl_bilder" value="{{ anzahl_bilder }}">
+  {{ csrf() }}<input type="hidden" name="konto_id" value="{{ konto.id }}"><input type="hidden" name="anzahl_bilder" value="{{ anzahl_bilder }}">{% if alter_saldo is not none %}<input type="hidden" name="alter_saldo" value="{{ alter_saldo }}">{% endif %}{% if neuer_saldo is not none %}<input type="hidden" name="neuer_saldo" value="{{ neuer_saldo }}">{% endif %}
   <p class="leise" style="padding:14px 16px 0;margin:0">Bitte kurz vergleichen und Tippfehler der Texterkennung direkt korrigieren. Übernommen werden nur angehakte Zeilen. Ausgaben stehen mit Minus, Gutschriften mit Plus.</p>
   <div class="scroll"><table class="tab ocr-tab">
-    <thead><tr><th style="width:36px"><input type="checkbox" id="alle" aria-label="Alle auswählen"></th><th>Datum</th><th>Name</th><th>Kategorie der Bank</th><th style="text-align:right">Betrag</th><th>Hinweis</th></tr></thead>
+    <thead><tr><th style="width:36px"><input type="checkbox" id="alle" aria-label="Alle auswählen"></th><th>Datum</th><th>Name</th><th>Zusatz der Bank</th><th style="text-align:right">Betrag</th><th>Hinweis</th></tr></thead>
     <tbody>
     {% for z in zeilen %}{% set nr = loop.index %}
       <tr class="{{ 'gedimmt' if z.pruefstatus == 'doppelt' }}">
         <td><input type="checkbox" name="nr" value="{{ nr }}" {{ 'checked' if z.vorauswahl }} {{ 'disabled' if z.pruefstatus == 'doppelt' }} aria-label="Zeile übernehmen">
-          <input type="hidden" name="hash_{{ nr }}" value="{{ z.hash }}"></td>
+          <input type="hidden" name="hash_{{ nr }}" value="{{ z.hash }}">{% if z.valuta %}<input type="hidden" name="valuta_{{ nr }}" value="{{ z.valuta.isoformat() }}">{% endif %}</td>
         <td><input type="date" name="datum_{{ nr }}" value="{{ z.datum.isoformat() if z.datum else '' }}" required aria-label="Datum"></td>
         <td><input type="text" name="partei_{{ nr }}" value="{{ z.gegenpartei }}" aria-label="Name" style="min-width:170px"></td>
-        <td><input type="text" name="bankkat_{{ nr }}" value="{{ z.bank_kategorie }}" aria-label="Kategorie der Bank" style="min-width:140px"></td>
+        <td><input type="text" name="bankkat_{{ nr }}" value="{{ z.bank_kategorie }}" aria-label="Zusatz der Bank" style="min-width:140px"></td>
         <td><input type="text" name="betrag_{{ nr }}" inputmode="decimal" value="{{ ('%.2f'|format(z.betrag_cent / 100)).replace('.', ',') }}" class="mono {{ 'pos' if z.betrag_cent > 0 }}" style="width:110px;text-align:right" aria-label="Betrag"></td>
         <td class="leise klein">{% if z.pruefstatus == 'doppelt' %}<span class="tag">schon übernommen</span>
           {% elif z.pruefstatus == 'aehnlich' %}<span class="tag warn">evtl. vorhanden</span> {{ z.aehnlich.gegenpartei }} am {{ z.aehnlich.buchungsdatum|datum }}

@@ -482,7 +482,13 @@ def bearbeiten(bid):
     monate = [monat_plus(b["abrechnungsmonat"], i) for i in (-2, -1, 0, 1, 2)]
     vorschlag = q1("SELECT pfad FROM kategorie WHERE id = ?", (b["vorschlag_kategorie_id"],)) \
         if b["vorschlag_kategorie_id"] and not b["kategorie_id"] else None
+    from ..services import darlehen as dl
+    darlehen_liste, sondertilgung = [], dl.sondertilgung_zu_buchung(bid)
+    if b["betrag_cent"] < 0 and b["konto_typ"] != "darlehen" and not sondertilgung:
+        sichtbar = auth.sichtbare_konten()
+        darlehen_liste = dl.alle([k for k in sichtbar])
     return render_template("buchung.html", b=b, partner=partner, kategorien=kategorien.alle(),
+                           darlehen_liste=darlehen_liste, sondertilgung=sondertilgung,
                            personen=q("SELECT * FROM person WHERE aktiv = 1 ORDER BY name"), monate=monate,
                            zurueck=request.args.get("zurueck", ""), split_liste=splits.lade(bid),
                            split_offen=bool(request.args.get("split")),

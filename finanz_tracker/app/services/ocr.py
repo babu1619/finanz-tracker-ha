@@ -22,7 +22,7 @@ MONATE = {"jan": 1, "feb": 2, "mär": 3, "mar": 3, "maer": 3, "apr": 4, "mai": 5
 
 # Betrag: optionales Vorzeichen (OCR liest das Minus gern als Gedankenstrich oder Anführungszeichen),
 # deutsche Schreibweise mit Komma und zwei Nachkommastellen, optional €/EUR.
-BETRAG_RE = re.compile(r"(?<![\d,.])([-+−–—~“”\"'‘’]?)\s?(\d{1,3}(?:[.\s]\d{3})*|\d+),(\d{2})(?!\d)\s*(?:€|EUR|E\b)?")
+BETRAG_RE = re.compile(r"(?<![\d,.])([-+−–—~“”\"'‘’]?)(\d{1,3}(?:[.\s]\d{3})*|\d+),(\d{2})(?!\d)\s*(?:€|EUR|E\b)?")
 DATUM_RE = re.compile(r"(?<!\d)(\d{1,2})\.?\s?(\d{1,2})\.\s?(\d{4}|\d{2})?(?!\d)")
 DATUM_TEXT_RE = re.compile(r"(?<!\d)(\d{1,2})\.?\s+([A-Za-zÄÖÜäöü]{3,})\.?\s*(\d{4})?", re.I)
 STATUS = {"gebucht": "gebucht", "vorgemerkt": "vorgemerkt", "ausstehend": "vorgemerkt", "reserviert": "vorgemerkt",

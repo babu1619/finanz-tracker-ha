@@ -2,7 +2,7 @@
 {% block titel %}Import{% endblock %}
 {% block inhalt %}
 <div class="kopf"><h1>Datei importieren</h1><span class="leise">CSV-Export vom Bankkonto</span>
-  <div class="rechts"><a class="btn" href="{{ url_for('importe.screenshot') }}">Screenshot einlesen</a></div></div>
+  <div class="rechts"><a class="btn" href="{{ url_for('importe.screenshot') }}">Abrechnung (PDF) oder Screenshot</a></div></div>
 <div class="reihe">
   <form method="post" enctype="multipart/form-data" class="karte breit" style="display:flex;flex-direction:column;gap:14px">
     {{ csrf() }}

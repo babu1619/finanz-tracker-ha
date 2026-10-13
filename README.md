@@ -1,6 +1,6 @@
 # Finanz-Tracker – Installation auf dem Home Assistant Green
 
-Version 0.4.0 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
+Version 0.5.0 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
 Die App ist eine eigenständige, verschlüsselte Webseite (https, Port 8099), die sich auf dem Handy als App installieren lässt;
 Home Assistant dient nur als Host.
 Alle Daten liegen lokal in der SQLite-Datenbank des Add-ons und sind Teil der Home-Assistant-Backups.
@@ -79,6 +79,20 @@ Startset an Kategorien angehakt lassen › „Einrichten“.
 
 Tipp für den Start: Die letzten 12 Monate importieren und einmal den Prüf-Modus durcharbeiten. Danach gibt es
 genug Regeln und Erfahrungswerte für eine weitgehend automatische Zuordnung.
+
+## Neu in 0.5.0 – kurz erklärt
+
+- **Kreditkartenabrechnung:** Import → „Abrechnung (PDF) oder Screenshot“, PDF der Monatsabrechnung auswählen (oder ein
+  Foto davon). Das Tool zeigt alle Umsätze zur Prüfung und rechnet nach: alter Saldo + Umsätze = neuer Saldo. Die
+  Gutschrift „Kartenabrechnung“ ist das Gegenstück zur Abbuchung vom Girokonto und wird als Umbuchung erkannt.
+- **Regeln nachträglich durchsetzen:** Beim Speichern einer Regel „diese Regel auf alle passenden Buchungen“ wählen –
+  dann werden auch manuell zugeordnete Buchungen umgestellt. Vorher mit „Gegen bestehende Buchungen testen“ ansehen,
+  was sich ändert. Aufgeteilte Buchungen und verknüpfte Umbuchungen bleiben immer unverändert.
+- **Sondertilgung als Buchung:** Auf der Darlehensseite eintragen (mit Haken „Als Buchung im Darlehenskonto anlegen“)
+  oder direkt bei der Abbuchung im Girokonto „Als Sondertilgung erfassen“ wählen.
+- **Bausparverträge:** Darlehen → „Bausparvertrag anlegen“. Einmal im Jahr den Guthabenstand aus dem Kontoauszug
+  eintragen. Wird ein Darlehen zur Ablösung gewählt, zeigt die Seite, ob Guthaben plus Bauspardarlehen zum Ende der
+  Zinsbindung reichen (vereinfacht, ohne Bewertungszahl).
 
 ## Neu in 0.4.0 – kurz erklärt
 

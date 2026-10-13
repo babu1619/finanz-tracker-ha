@@ -171,7 +171,12 @@ def _speichern(regel):
         rid = exe("INSERT INTO regel (name, prioritaet, bedingungen, aktionen) VALUES (?,?,?,?)",
                   (name, zuordnung.naechste_prioritaet(), jdump(bed), jdump(akt)))
     log_aenderung(g.user["id"], "regel", rid, "gespeichert", {"bedingungen": bed, "aktionen": akt})
-    if request.form.get("anwenden"):
+    anwenden = request.form.get("anwenden", "")
+    if anwenden == "alle":
+        stat = zuordnung.ordne_zu(None, auch_manuell=True, nur_regel_id=rid)
+        melde(f"Regel gespeichert und auf {stat['regel']} passende Buchungen angewendet"
+              + (f", davon {stat['manuell_ueberschrieben']} vorher manuell oder per anderer Regel zugeordnet." if stat["manuell_ueberschrieben"] else "."))
+    elif anwenden:
         stat = zuordnung.ordne_zu(None, ueberschreiben=True)
         melde(f"Regel gespeichert und angewendet: {stat['regel']} Buchungen per Regel zugeordnet.")
     else:
@@ -200,8 +205,13 @@ def verschieben(rid):
 @bp.route("/anwenden", methods=["POST"])
 @auth.schreibrecht
 def anwenden():
-    stat = zuordnung.ordne_zu(None, ueberschreiben=True)
+    auch_manuell = bool(request.form.get("auch_manuell"))
+    stat = zuordnung.ordne_zu(None, ueberschreiben=True, auch_manuell=auch_manuell)
     commit()
-    melde(f"Regeln angewendet: {stat['regel']} per Regel, {stat['gedaechtnis']} aus früheren Buchungen, "
-          f"{stat['offen']} bleiben offen. Manuell zugeordnete Buchungen wurden nicht verändert.")
+    if auch_manuell:
+        melde(f"Regeln angewendet: {stat['regel']} per Regel (davon {stat['manuell_ueberschrieben']} vorher manuell "
+              f"oder anders zugeordnet), {stat['gedaechtnis']} aus früheren Buchungen, {stat['offen']} bleiben offen.")
+    else:
+        melde(f"Regeln angewendet: {stat['regel']} per Regel, {stat['gedaechtnis']} aus früheren Buchungen, "
+              f"{stat['offen']} bleiben offen. Manuell zugeordnete Buchungen wurden nicht verändert.")
     return redirect(url_for("regeln.liste"))

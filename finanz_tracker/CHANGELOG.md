@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.5.0 – Oktober 2026
+
+- Kreditkartenabrechnung einlesen (z. B. Hanseatic Bank): als PDF oder als Foto/Ausschnitt der Abrechnung, unter Import → „Abrechnung (PDF) oder Screenshot“. Buchungs- und Transaktionsdatum, mehrzeilige Beschreibung und Betrag werden erkannt; der Saldo wird geprüft (alter Saldo + Umsätze = neuer Saldo), beim ersten Import als Startsaldo übernommen und danach wie beim CSV-Import abgeglichen. Eingescannte PDFs laufen über die Texterkennung. Umsätze, die schon per Screenshot übernommen wurden, werden als „evtl. vorhanden“ markiert
+- Regeln: beim Speichern wählbar, ob die Regel nur auf offene/automatisch zugeordnete Buchungen oder auf alle passenden Buchungen angewendet wird – auch auf manuell oder per anderer Regel zugeordnete. Der Test zeigt, wie viele davon manuell zugeordnet sind. In der Regelliste zusätzlich „… auch auf manuell zugeordnete“
+- Darlehen: Sondertilgungen werden auf Wunsch als Buchung im Darlehenskonto angelegt, die passende Abbuchung im Zahlkonto wird automatisch verknüpft. Auf der Detailseite einer Abbuchung (z. B. Girokonto) gibt es „Als Sondertilgung erfassen“. Beim Löschen der Sondertilgung verschwindet die angelegte Buchung wieder
+- Bausparverträge im Bereich Darlehen: Bausparsumme, Sparrate, Guthabenzins, Mindestguthaben, Darlehenszins und Tilgungsbeitrag; Guthabenstände aus dem Jahreskontoauszug; Prognose des Guthabens, voraussichtliche Zuteilung, Bauspardarlehen mit Rate und Laufzeit. Mit einem Darlehen verknüpft: Ablösung zum Ende der Zinsbindung mit Lücke bzw. Überschuss und der dafür nötigen Sparrate
+
 ## 0.4.0 – Oktober 2026
 
 - Dashboard: Klick auf „Einnahmen“ oder „Ausgaben“ zeigt die zugehörigen Buchungen des angezeigten Monats (neuer Filter „Art“ in den Buchungen); Klick auf ein Konto unter „Konten und Importstand“ zeigt dessen Buchungen (Depot und Darlehen öffnen ihre eigene Seite)

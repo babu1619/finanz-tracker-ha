@@ -120,42 +120,78 @@ def gedaechtnis_vorschlag(b):
     return {"kategorie_id": kat, "person_id": person, "anzahl": anzahl, "gesamt": len(rows)}
 
 
-def ordne_zu(buchung_ids: list[int] | None = None, ueberschreiben=False) -> dict:
+def _wende_regel_an(regel, b) -> None:
+    w = zielwerte(regel, b)
+    ist_umb = w.get("ist_umbuchung", b["ist_umbuchung"])
+    if b["ist_umbuchung"] and not w.get("ist_umbuchung") and w.get("kategorie_id") and not b["umbuchung_partner_id"]:
+        ist_umb = 0  # vorgemerkte Umbuchung wird per Regel zur normalen Ausgabe/Einnahme
+        exe("UPDATE buchung SET umbuchung_konto_id = NULL WHERE id = ?", (b["id"],))
+    exe("UPDATE buchung SET kategorie_id = COALESCE(?, kategorie_id), person_id = COALESCE(?, person_id), "
+        "abrechnungsmonat = ?, ist_umbuchung = ?, verteilung_monate = COALESCE(?, verteilung_monate), "
+        "zuordnung_quelle = 'regel', regel_id = ?, geprueft = 1, konfidenz = NULL, "
+        "vorschlag_kategorie_id = NULL WHERE id = ?",
+        (w.get("kategorie_id"), w.get("person_id"), w["abrechnungsmonat"], ist_umb,
+         w.get("verteilung_monate"), regel["id"], b["id"]))
+    if w.get("tag_id"):
+        exe("INSERT OR IGNORE INTO buchung_tag (buchung_id, tag_id) VALUES (?, ?)", (b["id"], w["tag_id"]))
+    if w.get("umbuchung_konto_id") and w["umbuchung_konto_id"] != b["konto_id"] and not b["umbuchung_partner_id"]:
+        from . import umbuchungen
+        umbuchungen.markiere(q1("SELECT * FROM buchung WHERE id = ?", (b["id"],)), w["umbuchung_konto_id"])
+
+
+def _gesperrt(b) -> bool:
+    """Nie automatisch umschreiben: aufgeteilte Buchungen, verknüpfte Umbuchungen, automatische Gegenbuchungen."""
+    if b["umbuchung_partner_id"] or b["auto_gegenbuchung"]:
+        return True
+    return q1("SELECT 1 FROM buchung_split WHERE buchung_id = ? LIMIT 1", (b["id"],)) is not None
+
+
+def ordne_zu(buchung_ids: list[int] | None = None, ueberschreiben=False, auch_manuell=False,
+             nur_regel_id: int | None = None) -> dict:
     """Wendet Regeln, Gedächtnis und Lernmodell an. Ohne buchung_ids: alle noch nicht zugeordneten Buchungen
-    (mit ueberschreiben=True auch bereits automatisch zugeordnete)."""
+    (mit ueberschreiben=True auch bereits automatisch zugeordnete).
+
+    auch_manuell=True: zusätzlich manuell oder per anderer Regel zugeordnete Buchungen umschreiben, sofern eine Regel
+    trifft (Gedächtnis und Lernmodell ändern manuelle Zuordnungen nie). Aufgeteilte Buchungen und verknüpfte
+    Umbuchungen bleiben unangetastet.
+    nur_regel_id: nur diese eine Regel anwenden (Speichern einer Regel mit „auf alle passenden anwenden“).
+    """
     from . import modell as modell_mod
     regeln = aktive_regeln()
+    if nur_regel_id is not None:
+        regeln = [r for r in regeln if r["id"] == nur_regel_id] or \
+                 [r for r in q("SELECT * FROM regel WHERE id = ?", (nur_regel_id,))]
     if buchung_ids is None:
-        rows = q("SELECT * FROM buchung WHERE COALESCE(zuordnung_quelle,'') NOT IN ('manuell','umbuchung')")
+        if auch_manuell:
+            rows = q("SELECT * FROM buchung")
+        else:
+            rows = q("SELECT * FROM buchung WHERE COALESCE(zuordnung_quelle,'') NOT IN ('manuell','umbuchung')")
     else:
         if not buchung_ids:
-            return {"regel": 0, "gedaechtnis": 0, "modell": 0, "offen": 0}
+            return {"regel": 0, "gedaechtnis": 0, "modell": 0, "offen": 0, "manuell_ueberschrieben": 0}
         marks = ",".join("?" * len(buchung_ids))
         rows = q(f"SELECT * FROM buchung WHERE id IN ({marks})", buchung_ids)
-    stat = {"regel": 0, "gedaechtnis": 0, "modell": 0, "offen": 0}
+    stat = {"regel": 0, "gedaechtnis": 0, "modell": 0, "offen": 0, "manuell_ueberschrieben": 0}
     lern = None
     for b in rows:
-        if b["zuordnung_quelle"] in ("manuell", "umbuchung"):
+        geschuetzt = b["zuordnung_quelle"] in ("manuell", "umbuchung")
+        if geschuetzt and not auch_manuell:
             continue
-        if b["zuordnung_quelle"] and not ueberschreiben and buchung_ids is None:
+        if b["zuordnung_quelle"] and not ueberschreiben and not auch_manuell and buchung_ids is None:
             continue
         treffer = next((r for r in regeln if regel_trifft(r, b)), None)
         if treffer:
-            w = zielwerte(treffer, b)
-            exe("UPDATE buchung SET kategorie_id = COALESCE(?, kategorie_id), person_id = COALESCE(?, person_id), "
-                "abrechnungsmonat = ?, ist_umbuchung = ?, verteilung_monate = COALESCE(?, verteilung_monate), "
-                "zuordnung_quelle = 'regel', regel_id = ?, geprueft = 1, konfidenz = NULL, "
-                "vorschlag_kategorie_id = NULL WHERE id = ?",
-                (w.get("kategorie_id"), w.get("person_id"), w["abrechnungsmonat"], w.get("ist_umbuchung", b["ist_umbuchung"]),
-                 w.get("verteilung_monate"), treffer["id"], b["id"]))
-            if w.get("tag_id"):
-                exe("INSERT OR IGNORE INTO buchung_tag (buchung_id, tag_id) VALUES (?, ?)", (b["id"], w["tag_id"]))
-            if w.get("umbuchung_konto_id") and w["umbuchung_konto_id"] != b["konto_id"] and not b["umbuchung_partner_id"]:
-                from . import umbuchungen
-                umbuchungen.markiere(q1("SELECT * FROM buchung WHERE id = ?", (b["id"],)), w["umbuchung_konto_id"])
+            if auch_manuell and _gesperrt(b):
+                continue
+            if b["zuordnung_quelle"] == "regel" and b["regel_id"] == treffer["id"] and nur_regel_id is None \
+                    and not ueberschreiben and buchung_ids is None:
+                continue
+            _wende_regel_an(treffer, b)
             stat["regel"] += 1
+            if geschuetzt or (b["zuordnung_quelle"] == "regel" and b["regel_id"] != treffer["id"]):
+                stat["manuell_ueberschrieben"] += 1
             continue
-        if b["ist_umbuchung"]:
+        if geschuetzt or nur_regel_id is not None or b["ist_umbuchung"]:
             continue
         g = gedaechtnis_vorschlag(b)
         if g:
@@ -201,15 +237,21 @@ def teste_regel(bedingungen: list, aktionen: dict, sichtbare_konten: list[int]) 
     rows = q(f"SELECT b.*, k.pfad AS kat_pfad FROM buchung b LEFT JOIN kategorie k ON k.id = b.kategorie_id "
              f"WHERE b.konto_id IN ({marks}) ORDER BY b.buchungsdatum DESC", sichtbare_konten)
     treffer, anders, beispiele = 0, 0, []
+    manuell = andere_regel = 0
     ziel_kat = int(aktionen["kategorie_id"]) if aktionen.get("kategorie_id") else None
     for b in rows:
         if regel_trifft(pseudo, b):
             treffer += 1
             if ziel_kat and b["kategorie_id"] != ziel_kat:
                 anders += 1
+                if b["zuordnung_quelle"] in ("manuell", "umbuchung"):
+                    manuell += 1
+                elif b["zuordnung_quelle"] == "regel":
+                    andere_regel += 1
                 if len(beispiele) < 8:
                     beispiele.append(b)
-    return {"treffer": treffer, "anders": anders, "beispiele": beispiele}
+    return {"treffer": treffer, "anders": anders, "beispiele": beispiele, "manuell": manuell,
+            "andere_regel": andere_regel}
 
 
 def regel_statistik() -> dict[int, dict]:

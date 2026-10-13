@@ -267,23 +267,34 @@ def screenshot():
         return redirect(url_for("importe.screenshot"))
     bilder = [f for f in request.files.getlist("bilder") if f and f.filename]
     if not bilder:
-        melde("Bitte mindestens einen Screenshot auswählen oder einfügen.", "warn")
+        melde("Bitte mindestens eine Abrechnung oder einen Screenshot auswählen oder einfügen.", "warn")
         return redirect(url_for("importe.screenshot", konto=konto_id))
+    from ..services import abrechnung
     alle, fehler, rohtexte = [], [], []
+    alter_saldo = neuer_saldo = None
+    abgleiche = []
     for nr, f in enumerate(bilder[:10], 1):
         try:
-            erg = ocr.erkenne(f.read())
+            erg = abrechnung.lies(f.read(), f.filename)
         except ocr.OcrFehler as exc:
-            fehler.append(f"Bild {nr}: {exc}")
+            fehler.append(f"Datei {nr}: {exc}")
             continue
         rohtexte.append(erg["text"])
         if not erg["umsaetze"]:
-            fehler.append(f"Bild {nr}: keine Umsätze erkannt.")
+            fehler.append(f"Datei {nr}: keine Umsätze erkannt.")
+        if alter_saldo is None:
+            alter_saldo = erg.get("alter_saldo")
+        if erg.get("neuer_saldo") is not None:
+            neuer_saldo = erg["neuer_saldo"]
+        if erg.get("alter_saldo") is not None and erg.get("neuer_saldo") is not None:
+            abgleiche.append({"datei": f.filename, "alter": erg["alter_saldo"], "neuer": erg["neuer_saldo"],
+                              "summe": sum(u["betrag_cent"] for u in erg["umsaetze"])})
         alle.append(erg["umsaetze"])
     zeilen = screenshot_zeilen(konto_id, alle)
     konto = q1("SELECT * FROM konto WHERE id = ?", (konto_id,))
     return render_template("import_screenshot_pruefen.html", konto=konto, zeilen=zeilen, fehler=fehler,
-                           rohtext="\n\n".join(rohtexte), anzahl_bilder=len(bilder))
+                           rohtext="\n\n".join(rohtexte), anzahl_bilder=len(bilder),
+                           alter_saldo=alter_saldo, neuer_saldo=neuer_saldo, abgleiche=abgleiche)
 
 
 def _ocr_schluessel(u) -> tuple:
@@ -319,7 +330,7 @@ def screenshot_zeilen(konto_id, listen: list[list[dict]]) -> list[dict]:
             aehnlich = None
             if u["datum"]:
                 aehnlich = q1("""SELECT id, gegenpartei, buchungsdatum FROM buchung WHERE konto_id = ? AND betrag_cent = ?
-                                 AND abs(julianday(buchungsdatum) - julianday(?)) <= 2 LIMIT 1""",
+                                 AND abs(julianday(buchungsdatum) - julianday(?)) <= 4 LIMIT 1""",
                               (konto_id, u["betrag_cent"], u["datum"].isoformat()))
             status = "doppelt" if h in vorhanden else ("aehnlich" if aehnlich else "neu")
             zeilen.append({**u, "hash": h, "pruefstatus": status, "aehnlich": aehnlich,
@@ -356,21 +367,39 @@ def screenshot_uebernehmen():
             fehler += 1
             continue
         bank_kat = f.get(f"bankkat_{nr}", "").strip()
-        daten.append((d, betrag, partei, bank_kat, h))
+        try:
+            valuta = _date.fromisoformat(f.get(f"valuta_{nr}", "")).isoformat()
+        except ValueError:
+            valuta = None
+        daten.append((d, betrag, partei, bank_kat, h, valuta))
         vorhanden.add(h)
     if not daten:
         melde("Keine Zeile übernommen." + (f" {fehler} Zeilen hatten ungültige Werte." if fehler else ""), "warn")
         return redirect(url_for("importe.screenshot", konto=konto_id))
     lauf_id = exe("INSERT INTO importlauf (konto_id, dateiname, benutzer_id, anzahl_neu, anzahl_doppelt, anzahl_fehler) "
                   "VALUES (?,?,?,?,?,?)",
-                  (konto_id, f"Screenshot ({f.get('anzahl_bilder') or 1} Bild/er)", g.user["id"], len(daten),
+                  (konto_id, ("Kreditkartenabrechnung" if f.get("neuer_saldo") or f.get("alter_saldo") else "Screenshot")
+                   + f" ({f.get('anzahl_bilder') or 1} Datei/en)", g.user["id"], len(daten),
                    len(gewaehlt) - len(daten) - fehler, fehler))
+    konto_leer = q1("SELECT COUNT(*) AS n FROM buchung WHERE konto_id = ?", (konto_id,))["n"] == 0
     ids = []
-    for d, betrag, partei, bank_kat, h in daten:
-        ids.append(exe("""INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key,
-                          abrechnungsmonat, dedup_hash, importlauf_id, rohdaten) VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                       (konto_id, d.isoformat(), betrag, partei, bank_kat or "", partner_key(partei), monat_von(d), h,
-                        lauf_id, jdump({"quelle": "screenshot", "bank_kategorie": bank_kat}))))
+    for d, betrag, partei, bank_kat, h, valuta in daten:
+        ids.append(exe("""INSERT INTO buchung (konto_id, buchungsdatum, valuta, betrag_cent, gegenpartei, verwendungszweck,
+                          partner_key, abrechnungsmonat, dedup_hash, importlauf_id, rohdaten) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                       (konto_id, d.isoformat(), valuta, betrag, partei, bank_kat or "", partner_key(partei), monat_von(d),
+                        h, lauf_id, jdump({"quelle": f.get("quelle") or "screenshot", "bank_kategorie": bank_kat}))))
+    # Salden der Abrechnung: Startsaldo beim ersten Import, danach Abgleich wie beim CSV-Import
+    alter = int_oder_none(f.get("alter_saldo"))
+    neuer = int_oder_none(f.get("neuer_saldo"))
+    if alter is not None and konto_leer:
+        k = q1("SELECT startsaldo_cent FROM konto WHERE id = ?", (konto_id,))
+        if k["startsaldo_cent"] == 0:
+            exe("UPDATE konto SET startsaldo_cent = ? WHERE id = ?", (alter, konto_id))
+    if neuer is not None:
+        bis = max(x[0] for x in daten).isoformat()
+        errechnet = importer.kontostand(konto_id, bis)
+        exe("UPDATE importlauf SET saldo_datei_cent = ?, saldo_differenz_cent = ? WHERE id = ?",
+            (neuer, errechnet - neuer, lauf_id))
     zuordnung.ordne_zu(ids)
     umbuchungen.erkenne(ids)
     log_aenderung(g.user["id"], "importlauf", lauf_id, "screenshot", {"buchungen": len(ids)})

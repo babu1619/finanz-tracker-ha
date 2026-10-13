@@ -41,6 +41,9 @@
   {% endif %}
 </section>
 
+{% if bausparvertraege %}<div class="flash ok">Bausparvertrag zur Ablösung: {% for v in bausparvertraege %}<a href="{{ url_for('darlehen.bausparen_detail', vid=v.id) }}">{{ v.name }}</a>{{ ', ' if not loop.last }}{% endfor %}</div>
+{% elif darf_schreiben and d.zinsbindung_bis %}<p class="leise klein"><a href="{{ url_for('darlehen.bausparvertrag', darlehen=d.konto_id) }}">Bausparvertrag für die Anschlussfinanzierung anlegen</a></p>{% endif %}
+
 <div class="reihe">
   <section class="karte breit ohne-rand">
     <div class="kopf"><h2 style="margin:0">Tilgungsplan je Jahr</h2></div>
@@ -56,16 +59,19 @@
     <h2>Sondertilgungen und Abgleiche</h2>
     {% for e in k.ereignisse %}
     <div class="kopf" style="padding:6px 0;border-bottom:1px solid var(--line2)"><span class="mono">{{ e.datum|datum }}</span>
-      <span>{{ 'Sondertilgung' if e.art == 'sondertilgung' else 'Restschuld laut Bank' }}</span><b class="rechts mono">{{ e.betrag_cent|euro }}</b>
+      <span>{{ 'Sondertilgung' if e.art == 'sondertilgung' else 'Restschuld laut Bank' }}{% set info = ereignis_info.get(e.id) %}{% if info %}{% if info.buchung_id %}<br><a class="klein" href="{{ url_for('buchungen.bearbeiten', bid=info.buchung_id) }}">Buchung im Darlehenskonto</a>{% endif %}{% if info.zahlung_buchung_id %}<br><a class="klein" href="{{ url_for('buchungen.bearbeiten', bid=info.zahlung_buchung_id) }}">Zahlung {{ info.zahl_konto }} {{ info.zahl_datum|datum }}</a>{% endif %}{% endif %}</span><b class="rechts mono">{{ e.betrag_cent|euro }}</b>
       {% if darf_schreiben %}<form method="post" action="{{ url_for('darlehen.ereignis', kid=d.konto_id) }}">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen"><input type="hidden" name="eid" value="{{ e.id }}"><button class="btn klein" type="submit" aria-label="entfernen">✕</button></form>{% endif %}</div>
     {% else %}<p class="leise">Noch keine Einträge.</p>{% endfor %}
     {% if darf_schreiben %}
     <form method="post" action="{{ url_for('darlehen.ereignis', kid=d.konto_id) }}" style="display:flex;flex-direction:column;gap:10px;margin-top:12px">{{ csrf() }}
       <div class="formreihe">
-        <label class="feld">Art<select name="art"><option value="sondertilgung">Sondertilgung geleistet</option><option value="abgleich">Restschuld laut Bank</option></select></label>
+        <label class="feld">Art<select name="art" data-art-wahl><option value="sondertilgung">Sondertilgung geleistet</option><option value="abgleich">Restschuld laut Bank</option></select></label>
         <label class="feld">Datum<input type="date" name="datum" required style="min-height:40px"></label>
       </div>
       <label class="feld">Betrag<input type="text" name="betrag" inputmode="decimal" required></label>
+      <label class="feld">Notiz<input type="text" name="notiz" placeholder="optional"></label>
+      <label class="check" data-nur="sondertilgung"><input type="checkbox" name="buchung_anlegen" value="1" {{ 'checked' if not hat_buchungen }}> Als Buchung im Darlehenskonto anlegen{% if hat_buchungen %} (nicht nötig, wenn der Kontoauszug des Darlehens importiert wird){% endif %}</label>
+      <p class="leise klein" style="margin:0" data-nur="sondertilgung">{% if d.zahlkonto_id %}Die passende Abbuchung im Konto {{ d.zahlkonto_name }} (gleicher Betrag, ±10 Tage) wird automatisch verknüpft. {% endif %}Alternativ eine Abbuchung in den Buchungen öffnen und dort „Als Sondertilgung erfassen“ wählen.</p>
       <button class="btn primaer" type="submit">Eintragen</button>
       <p class="leise" style="margin:0">Mit „Restschuld laut Bank“ (z. B. aus dem Jahreskontoauszug) korrigierst du Rundungsabweichungen des Plans.</p>
     </form>
