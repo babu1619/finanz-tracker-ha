@@ -225,6 +225,7 @@ class Ablauf(unittest.TestCase):
         self._v031(db)
         self._v040(db)
         self._v050(db)
+        self._v060(db)
 
         # 11. Import rückgängig
         lauf = db.execute("SELECT id FROM importlauf WHERE anzahl_neu = 2 ORDER BY id").fetchone()["id"]
@@ -875,6 +876,149 @@ class Ablauf(unittest.TestCase):
         self.assertIn("Bausparen Haus", html)
         self.assertIn("31.000", html)
         self.assertIn("Bausparvertrag zur Ablösung", self.get("/darlehen/3"))
+
+    def _v060(self, db):
+        """0.6.0: Verträge mit Kündigungsfrist, Zuordnung von Buchungen, Darlehenszahlungen, Suche, eigene Auswertungen."""
+        import json
+        from datetime import date, timedelta
+        from app.services import vertraege as vt, darlehen as dl, auswertung_daten as ad
+
+        # --- Kündigungsfrist inkl. automatischer Verlängerung
+        v = {"laufzeit_ende": "2025-12-31", "verlaengerung_monate": 12, "kuendigungsfrist": 3,
+             "kuendigungsfrist_einheit": "monate", "gekuendigt_zum": None, "aktiv": 1}
+        k = vt.kuendigung(v, date(2026, 9, 15))
+        self.assertEqual((k["ende"], k["kuendigen_bis"], k["hinweis"]), (date(2026, 12, 31), date(2026, 9, 30), True))
+        k = vt.kuendigung(v, date(2026, 10, 2))  # Frist verpasst -> nächste Laufzeit
+        self.assertEqual((k["ende"], k["hinweis"]), (date(2027, 12, 31), False))
+        k = vt.kuendigung({**v, "kuendigungsfrist": 4, "kuendigungsfrist_einheit": "wochen", "verlaengerung_monate": None},
+                          date(2025, 12, 1))
+        self.assertEqual(k["kuendigen_bis"], date(2025, 12, 3))
+
+        # --- Vertrag aus einer Buchung anlegen (Abo, Rhythmus) – Zahlungen derselben Gegenpartei folgen
+        ids = []
+        for i, d in enumerate(("2026-07-03", "2026-08-03", "2026-09-03")):
+            ids.append(db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, "
+                                  "partner_key, abrechnungsmonat, dedup_hash) VALUES (1, ?, -1299, 'Streamingdienst', '', "
+                                  "'streamingdienst', ?, ?)", (d, d[:7], f"v060-s{i}")).lastrowid)
+        db.commit()
+        html = self.get(f"/buchungen/{ids[-1]}")
+        self.assertIn("Abo, Fixkosten oder Vertrag", html)
+        html = self.post(f"/buchungen/{ids[-1]}/zuordnung", {"vertrag": "neu", "neu_art": "abo", "neu_rhythmus": "1",
+                                                             "neu_name": "Streaming"}, von=f"/buchungen/{ids[-1]}")
+        self.assertIn("Neuer Abo angelegt", html)
+        vid = db.execute("SELECT id FROM vertrag WHERE name = 'Streaming'").fetchone()["id"]
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM buchung WHERE vertrag_id = ?", (vid,)).fetchone()[0], 3)
+        # künftiger Import wird automatisch zugeordnet
+        neu = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                         "abrechnungsmonat, dedup_hash) VALUES (1, '2026-10-03', -1499, 'Streamingdienst', '', 'streamingdienst', "
+                         "'2026-10', 'v060-s3')").lastrowid
+        db.commit()
+        with self.app.app_context():
+            from app.db import commit
+            self.assertEqual(vt.zuordnen([neu]), 1)
+            commit()
+            info = next(x for x in vt.liste([1, 2]) if x["id"] == vid)
+        self.assertEqual((info["anzahl"], info["betrag"], info["aenderung"], info["naechste"]), (4, 1499, 200, "2026-11-03"))
+        self.assertIn("Streaming", self.get(f"/buchungen/?vertrag={vid}&monat=alle"))
+        # Laufzeit und Kündigungsfrist ergänzen -> Hinweis oben auf jeder Seite
+        bald = date.today() + timedelta(days=40)
+        html = self.post(f"/vertraege/{vid}", {"name": "Streaming", "art": "abo", "betrag": "14,99", "rhythmus_monate": "1",
+                                               "partner_key": "streamingdienst", "laufzeit_ende": bald.isoformat(),
+                                               "kuendigungsfrist": "14", "kuendigungsfrist_einheit": "tage",
+                                               "verlaengerung_monate": "12", "aktiv": "1"}, von=f"/vertraege/{vid}")
+        self.assertIn("Vertrag gespeichert", html)
+        self.assertIn("Kündigungsfrist <b>Streaming</b>", self.get("/"))
+        self.post(f"/vertraege/{vid}", {"aktion": "gekuendigt"}, von=f"/vertraege/{vid}")
+        self.assertNotIn("Kündigungsfrist <b>Streaming</b>", self.get("/"))
+        # eigener Rhythmus und Sammelaktion
+        self.post(f"/vertraege/{vid}", {"name": "Streaming", "art": "abo", "rhythmus_monate": "eigen", "rhythmus_eigen": "5",
+                                        "aktiv": "1"}, von=f"/vertraege/{vid}")
+        self.assertEqual(db.execute("SELECT rhythmus_monate FROM vertrag WHERE id = ?", (vid,)).fetchone()[0], 5)
+        self.post("/buchungen/sammel", {"ids": [str(ids[0])], "aktion": "vertrag", "vertrag_id": "",
+                                        "zurueck": "/buchungen/?monat=alle"}, von="/buchungen/?monat=alle")
+        self.assertIsNone(db.execute("SELECT vertrag_id FROM buchung WHERE id = ?", (ids[0],)).fetchone()[0])
+        html = self.get("/vertraege/")
+        self.assertIn("Streaming", html)
+        # erkannte Zahlung übernehmen bzw. ausblenden
+        for i, d in enumerate(("2026-01-10", "2026-04-10", "2026-07-10", "2026-10-10")):
+            db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                       "abrechnungsmonat, dedup_hash) VALUES (1, ?, -6000, 'Haftpflicht AG', '', 'haftpflicht ag', ?, ?)",
+                       (d, d[:7], f"v060-h{i}"))
+        db.commit()
+        self.assertIn("Haftpflicht AG", self.get("/vertraege/"))
+        html = self.post("/vertraege/markieren", {"partner_key": "haftpflicht ag", "art": "fix", "monate": "3",
+                                                  "name": "Haftpflicht"}, von="/vertraege/")
+        self.assertIn("Als Fixkosten übernommen", html)
+        h = db.execute("SELECT * FROM vertrag WHERE name = 'Haftpflicht'").fetchone()
+        self.assertEqual((h["art"], h["rhythmus_monate"]), ("fix", 3))
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM buchung WHERE vertrag_id = ?", (h["id"],)).fetchone()[0], 4)
+
+        # --- Darlehen: Raten aus dem Zahlkonto automatisch zuordnen, einzeln zuordnen
+        raten = [db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, "
+                            "partner_key, abrechnungsmonat, dedup_hash) VALUES (1, ?, -120000, 'Musterbank', 'Rate', "
+                            "'musterbank', ?, ?)", (f"2026-0{m}-30", f"2026-0{m}", f"v060-r{m}")).lastrowid for m in (7, 8, 9)]
+        db.commit()
+        self.post("/darlehen/3/konditionen", {"ursprung": "300.000", "sollzins": "1,5", "rate": "1.200", "erste_rate": "2020-01",
+                                              "zinsbindung_bis": "2030-12", "sondertilgung_prozent": "5",
+                                              "erinnerung_monate": "24", "zahlkonto_id": "1"}, von="/darlehen/3/konditionen")
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM buchung WHERE darlehen_konto_id = 3").fetchone()[0], 3)
+        html = self.get("/darlehen/3")
+        self.assertIn("Zugeordnete Zahlungen", html)
+        self.assertIn("3.600,00", html)
+        self.post(f"/buchungen/{raten[0]}/zuordnung", {"vertrag": "", "darlehen": ""}, von=f"/buchungen/{raten[0]}")
+        self.assertIsNone(db.execute("SELECT darlehen_konto_id FROM buchung WHERE id = ?", (raten[0],)).fetchone()[0])
+        html = self.post("/darlehen/3/zahlungen-zuordnen", {}, von="/darlehen/3")
+        self.assertIn("1 Raten", html)
+        self.assertIn("Musterbank", self.get("/buchungen/?darlehen=3&monat=alle"))
+
+        # --- Suche
+        self.assertIn('data-suche="baum"', self.get("/kategorien/"))
+        self.assertIn('data-suche="zeilen"', self.get("/regeln/"))
+
+        # --- Eigene Auswertungen
+        html = self.get("/auswertung/eigene")
+        self.assertIn("Diagramm hinzufügen", html)
+        aid = db.execute("SELECT id FROM auswertung_ansicht").fetchone()["id"]
+        self.assertEqual(len(json.loads(db.execute("SELECT diagramme FROM auswertung_ansicht").fetchone()[0])), 6)
+        tag = db.execute("SELECT id FROM tag LIMIT 1").fetchone()["id"]
+        kat_frei = db.execute("SELECT id FROM kategorie WHERE pfad = 'Freizeit'").fetchone()["id"]
+
+        def daten(konfig):
+            r = self.c.post("/auswertung/daten", data=json.dumps(konfig), content_type="application/json",
+                            headers={"X-CSRF": self._csrf})
+            self.assertEqual(r.status_code, 200, r.get_data(as_text=True)[:300])
+            return r.get_json()
+        for g in ad.GRUPPEN:
+            for zeit in ("monat", "quartal", "jahr", "summe"):
+                d = daten({"gruppe": g, "zeit": zeit, "zeitraum": "24", "messgroesse": "ausgaben", "eltern": kat_frei,
+                           "vergleich": "vorjahr", "kumuliert": True, "top": 3})
+                self.assertEqual(len(d["labels"]), len(d["schluessel"]))
+                for r in d["reihen"]:
+                    self.assertEqual(len(r["werte"]), len(d["labels"]))
+        d = daten({"gruppe": "einaus", "zeit": "monat", "zeitraum": "eigen", "von": "2026-08", "bis": "2026-10",
+                   "messgroesse": "saldo"})
+        self.assertEqual(d["labels"], ["Aug 26", "Sep 26", "Okt 26"])
+        self.assertTrue(all(w >= 0 for r in d["reihen"] for w in r["werte"]))
+        d = daten({"gruppe": "vertrag", "zeit": "summe", "zeitraum": "12", "auswahl": [h["id"]]})
+        self.assertEqual([(r["name"], r["werte"]) for r in d["reihen"]], [("Haftpflicht", [24000])])
+        d = daten({"gruppe": "tag", "zeit": "summe", "zeitraum": "60", "auswahl": [tag]})
+        self.assertLessEqual(len(d["reihen"]), 1)
+        d = daten({"gruppe": "vertragsart", "zeit": "summe", "zeitraum": "12", "messgroesse": "anzahl"})
+        self.assertEqual(d["einheit"], "")
+        # speichern, neue Ansicht, löschen
+        r = self.c.post(f"/auswertung/ansicht/{aid}", data=json.dumps({"diagramme": [{"typ": "kennzahl", "gruppe": "gesamt"}]}),
+                        content_type="application/json", headers={"X-CSRF": self._csrf})
+        self.assertTrue(r.get_json()["ok"])
+        self.assertIn("kennzahl", db.execute("SELECT diagramme FROM auswertung_ansicht WHERE id = ?", (aid,)).fetchone()[0])
+        html = self.post("/auswertung/ansicht", {"name": "Mobilität"}, von="/auswertung/eigene")
+        self.assertIn("Mobilität", html)
+        neu_aid = db.execute("SELECT id FROM auswertung_ansicht WHERE name = 'Mobilität'").fetchone()["id"]
+        self.post(f"/auswertung/ansicht/{neu_aid}", {"aktion": "loeschen"}, von=f"/auswertung/eigene?ansicht={neu_aid}")
+        self.assertIsNone(db.execute("SELECT 1 FROM auswertung_ansicht WHERE id = ?", (neu_aid,)).fetchone())
+        # aufräumen
+        db.execute("DELETE FROM buchung WHERE dedup_hash LIKE 'v060-%'")
+        db.execute("DELETE FROM vertrag")
+        db.commit()
 
     def test_csrf(self):
         r = self.c.post("/login", data={"name": "x", "passwort": "y"})

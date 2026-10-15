@@ -29,6 +29,8 @@ def _filter():
         "max": a.get("max", "").strip(),
         "richtung": a.get("richtung", "") if a.get("richtung") in ("aus", "ein") else "",
         "art": a.get("art", "") if a.get("art") in ("einnahme", "ausgabe") else "",
+        "vertrag": int_oder_none(a.get("vertrag")),
+        "darlehen": int_oder_none(a.get("darlehen")),
         "sort": a.get("sort", "") if a.get("sort", "").lstrip("-") in SORTIERUNG else "",
     }
     if f["monat"] and f["monat"] != "alle" and not ist_monat(f["monat"]):
@@ -46,7 +48,7 @@ SORTIERUNG = {
     "tags": "tagsort IS NULL, tagsort COLLATE NOCASE {r}, b.buchungsdatum DESC",
     "betrag": "b.betrag_cent {r}, b.buchungsdatum DESC",
 }
-FILTER_FELDER = ("konto", "kategorie", "person", "tag", "suche", "status", "partei", "von", "bis", "min", "max", "richtung", "art")
+FILTER_FELDER = ("konto", "kategorie", "person", "tag", "suche", "status", "partei", "von", "bis", "min", "max", "richtung", "art", "vertrag", "darlehen")
 
 
 def _ist_datum(text) -> bool:
@@ -110,6 +112,12 @@ def _abfrage(f, limit=500):
         where.append("b.betrag_cent < 0")
     elif f["richtung"] == "ein":
         where.append("b.betrag_cent > 0")
+    if f["vertrag"]:
+        where.append("b.vertrag_id = ?")
+        params.append(f["vertrag"])
+    if f["darlehen"]:
+        where.append("b.darlehen_konto_id = ?")
+        params.append(f["darlehen"])
     if f["art"]:
         # wie im Dashboard: Art der Kategorie entscheidet, unkategorisierte Eingänge gelten als Einnahme
         arten = kategorien.art_map()
@@ -139,7 +147,8 @@ def _abfrage(f, limit=500):
     sql_where = " AND ".join(where)
     rows = q(f"""SELECT b.*, k.name AS konto_name, k.typ AS konto_typ, kat.pfad AS kat_pfad,
                         p.name AS person_name, r.name AS regel_name, rl.name AS ruecklage_name,
-                        gk.name AS umbuchung_konto_name,
+                        gk.name AS umbuchung_konto_name, vt.name AS vertrag_name, vt.art AS vertrag_art,
+                        dk.name AS darlehen_name,
                         (SELECT MIN(t.name) FROM buchung_tag bt JOIN tag t ON t.id = bt.tag_id
                          WHERE bt.buchung_id = b.id) AS tagsort
                  FROM buchung b JOIN konto k ON k.id = b.konto_id
@@ -148,6 +157,8 @@ def _abfrage(f, limit=500):
                  LEFT JOIN regel r ON r.id = b.regel_id
                  LEFT JOIN ruecklage rl ON rl.id = b.ruecklage_id
                  LEFT JOIN konto gk ON gk.id = b.umbuchung_konto_id
+                 LEFT JOIN vertrag vt ON vt.id = b.vertrag_id
+                 LEFT JOIN konto dk ON dk.id = b.darlehen_konto_id
                  WHERE {sql_where} ORDER BY {_order(f["sort"])} LIMIT {int(limit)}""", params)
     summe = q1(f"""SELECT COUNT(*) AS n,
                      COALESCE(SUM(CASE WHEN b.betrag_cent < 0 AND b.ist_umbuchung = 0 THEN b.betrag_cent END),0) AS aus,
@@ -192,7 +203,17 @@ def liste():
                            tag_name=(q1("SELECT name FROM tag WHERE id = ?", (f["tag"],)) or {"name": ""})["name"] if f["tag"] else "",
                            basis={k: v for k, v in f.items() if v not in (None, "")},
                            gegenkonten=_gegenkonten_liste(),
+                           vertrag_liste=_vertrag_liste(), darlehen_liste=_darlehen_liste(),
                            aktive=_aktive_filter(f, konten))
+
+
+def _vertrag_liste():
+    return q("SELECT id, name, art FROM vertrag WHERE art != 'ignoriert' AND aktiv = 1 ORDER BY name COLLATE NOCASE")
+
+
+def _darlehen_liste():
+    from ..services import darlehen as dl
+    return dl.alle(auth.sichtbare_konten())
 
 
 def _gegenkonten_liste():
@@ -230,6 +251,12 @@ def _aktive_filter(f, konten) -> list[tuple[str, str]]:
         erg.append(("max", f"Betrag ≤ {f['max']} €"))
     if f["richtung"]:
         erg.append(("richtung", "nur Ausgaben" if f["richtung"] == "aus" else "nur Einnahmen"))
+    if f["vertrag"]:
+        v = q1("SELECT name FROM vertrag WHERE id = ?", (f["vertrag"],))
+        erg.append(("vertrag", f"Vertrag: {v['name'] if v else '?'}"))
+    if f["darlehen"]:
+        d = q1("SELECT name FROM konto WHERE id = ?", (f["darlehen"],))
+        erg.append(("darlehen", f"Darlehen: {d['name'] if d else '?'}"))
     if f["art"]:
         erg.append(("art", "Einnahmen" if f["art"] == "einnahme" else "Ausgaben (ohne Umbuchungen)"))
     if f["status"]:
@@ -312,6 +339,20 @@ def sammel():
                                                      ("vorgemerkt", "Gegenbuchung folgt beim Import"))
                             if (v := zaehler.get(k)))
         melde(f"{n} Buchungen als Umbuchung markiert" + (f" ({details})." if details else "."))
+    elif aktion == "vertrag":
+        vid = int_oder_none(request.form.get("vertrag_id"))
+        if vid and not q1("SELECT 1 FROM vertrag WHERE id = ?", (vid,)):
+            vid = None
+        for i in ids:
+            exe("UPDATE buchung SET vertrag_id = ? WHERE id = ?", (vid, i))
+        melde(f"{len(ids)} Buchungen " + ("dem Vertrag zugeordnet." if vid else "von ihrem Vertrag gelöst."))
+    elif aktion == "darlehen":
+        kid = int_oder_none(request.form.get("darlehen_konto_id"))
+        if kid and kid not in {d["konto_id"] for d in _darlehen_liste()}:
+            kid = None
+        for i in ids:
+            exe("UPDATE buchung SET darlehen_konto_id = ? WHERE id = ?", (kid, i))
+        melde(f"{len(ids)} Buchungen " + ("dem Darlehen zugeordnet." if kid else "von ihrem Darlehen gelöst."))
     elif aktion == "umbuchung" and len(ids) == 2:
         a, b = (q1("SELECT * FROM buchung WHERE id = ?", (i,)) for i in ids)
         if a["betrag_cent"] != -b["betrag_cent"] or a["konto_id"] == b["konto_id"]:
@@ -324,6 +365,45 @@ def sammel():
     log_aenderung(g.user["id"], "buchung", None, f"sammel:{aktion}", {"ids": ids})
     commit()
     return redirect(request.form.get("zurueck") or url_for("buchungen.liste"))
+
+
+@bp.route("/<int:bid>/zuordnung", methods=["POST"])
+@auth.schreibrecht
+def zuordnung_speichern(bid):
+    """Vertrag (Abo/Fixkosten/Vertrag, auch neu anlegen) und Darlehen einer Buchung festlegen."""
+    from ..services import vertraege as vt
+    b = q1("SELECT * FROM buchung WHERE id = ?", (bid,))
+    if not b or not auth.konto_sichtbar(b["konto_id"]):
+        abort(404)
+    f = request.form
+    zurueck = f.get("zurueck") or url_for("buchungen.bearbeiten", bid=bid)
+    teile = []
+    wahl = f.get("vertrag", "")
+    if wahl == "neu":
+        vid = vt.aus_buchung_anlegen(b, f.get("neu_art", "vertrag"), int_oder_none(f.get("neu_rhythmus")) or 0,
+                                     f.get("neu_name", "").strip() or None)
+        teile.append(f"Neuer {vt.ARTEN.get(f.get('neu_art'), 'Vertrag')} angelegt und zugeordnet")
+        if b["partner_key"]:
+            n = q1("SELECT COUNT(*) AS n FROM buchung WHERE vertrag_id = ?", (vid,))["n"] - 1
+            if n > 0:
+                teile.append(f"{n} weitere Zahlungen derselben Gegenpartei ebenfalls")
+    else:
+        vid = int_oder_none(wahl)
+        if vid and not q1("SELECT 1 FROM vertrag WHERE id = ?", (vid,)):
+            vid = None
+        if vid != b["vertrag_id"]:
+            exe("UPDATE buchung SET vertrag_id = ? WHERE id = ?", (vid, bid))
+            teile.append("Vertrag zugeordnet" if vid else "Vertragszuordnung entfernt")
+    kid = int_oder_none(f.get("darlehen"))
+    if kid and kid not in {d["konto_id"] for d in _darlehen_liste()}:
+        kid = None
+    if kid != b["darlehen_konto_id"]:
+        exe("UPDATE buchung SET darlehen_konto_id = ? WHERE id = ?", (kid, bid))
+        teile.append("Darlehen zugeordnet" if kid else "Darlehenszuordnung entfernt")
+    log_aenderung(g.user["id"], "buchung", bid, "zuordnung", dict(f))
+    commit()
+    melde(("; ".join(teile) + ".") if teile else "Nichts geändert.")
+    return redirect(zurueck)
 
 
 @bp.route("/<int:bid>/inline", methods=["POST"])
@@ -489,6 +569,8 @@ def bearbeiten(bid):
         darlehen_liste = dl.alle([k for k in sichtbar])
     return render_template("buchung.html", b=b, partner=partner, kategorien=kategorien.alle(),
                            darlehen_liste=darlehen_liste, sondertilgung=sondertilgung,
+                           vertrag_liste=_vertrag_liste(), darlehen_alle=_darlehen_liste(),
+                           vertrag_arten={"abo": "Abo", "fix": "Fixkosten", "vertrag": "Vertrag"},
                            personen=q("SELECT * FROM person WHERE aktiv = 1 ORDER BY name"), monate=monate,
                            zurueck=request.args.get("zurueck", ""), split_liste=splits.lade(bid),
                            split_offen=bool(request.args.get("split")),

@@ -1,43 +1,64 @@
 {% extends "base.html" %}{% from "_makros.html" import csrf with context %}
 {% block titel %}Abos & Verträge{% endblock %}
-{% macro aktionen(v) -%}
-{% if darf_schreiben %}<form method="post" action="{{ url_for('vertraege.markieren') }}" class="formreihe" style="gap:4px;justify-content:flex-end">{{ csrf() }}
-  <input type="hidden" name="partner_key" value="{{ v.partner_key }}"><input type="hidden" name="name" value="{{ v.name }}">
-  {% if v.art != 'fix' %}<button class="btn klein" name="art" value="fix">Fixkosten</button>{% endif %}
-  {% if v.art != 'abo' %}<button class="btn klein" name="art" value="abo">Abo</button>{% endif %}
-  {% if v.art %}<button class="btn klein" name="art" value="zuruecksetzen">zurücksetzen</button>{% else %}<button class="btn klein" name="art" value="ignoriert">kein Vertrag</button>{% endif %}
-</form>{% endif %}
-{%- endmacro %}
-{% macro tabelle(liste, leer) -%}
-<div class="scroll"><table class="tab" style="min-width:720px">
-  <thead><tr><th>Empfänger</th><th>Rhythmus</th><th style="text-align:right">Betrag</th><th style="text-align:right">pro Monat</th><th>Letzte · nächste</th><th></th></tr></thead>
-  <tbody>{% for v in liste %}<tr>
-    <td><a href="{{ url_for('buchungen.liste', suche=v.name[:30], monat='alle') }}"><b>{{ v.name }}</b></a>{% if v.art == 'abo' %} <span class="tag info">Abo</span>{% elif v.art == 'fix' %} <span class="tag">Fix</span>{% endif %}
-      <div class="leise">{{ v.kat_pfad or 'ohne Kategorie' }} · {{ v.anzahl }} Zahlungen</div>
-      {% if v.aenderung %}<span class="tag {{ 'bad' if v.aenderung > 0 else 'ok' }}">Preis {{ '+' if v.aenderung > 0 }}{{ v.aenderung|euro }} (vorher {{ v.vorher|euro }})</span>{% endif %}
-      {% if v.ausgeblieben %}<span class="tag warn">Zahlung ausgeblieben – gekündigt oder Kontowechsel?</span>{% endif %}</td>
-    <td>{{ v.rhythmus }}</td><td class="betrag">{{ v.betrag|euro }}</td><td class="betrag">{{ v.monatlich|euro if v.monatlich else '–' }}</td>
-    <td class="leise" style="white-space:nowrap">{{ v.letzte|datum }}{% if v.naechste %}<br>≈ {{ v.naechste|datum }}{% endif %}</td>
-    <td>{{ aktionen(v) }}</td></tr>
-  {% else %}<tr><td colspan="6" class="leer">{{ leer }}</td></tr>{% endfor %}</tbody></table></div>
+{% macro kuendigungsinfo(k) -%}
+{% if k %}{% if k.gekuendigt %}<span class="tag">gekündigt zum {{ k.gekuendigt|datum }}</span>
+{% elif k.abgelaufen %}<span class="tag">ausgelaufen {{ k.ende|string|datum }}</span>
+{% elif k.verpasst %}<span class="tag bad">Kündigungsfrist verpasst – endet {{ k.ende|string|datum }}</span>
+{% elif k.hinweis %}<span class="tag warn">kündigen bis {{ k.kuendigen_bis|string|datum }}</span>
+{% else %}<span class="leise">Laufzeit bis {{ k.ende|string|datum }} · kündbar bis {{ k.kuendigen_bis|string|datum }}</span>{% endif %}{% endif %}
 {%- endmacro %}
 {% block inhalt %}
-<div class="kopf"><h1>Abos &amp; Verträge</h1><span class="leise">wiederkehrende Zahlungen der letzten zwei Jahre</span></div>
+<div class="kopf"><h1>Abos &amp; Verträge</h1><span class="leise">Fixkosten, Abos und Verträge mit Laufzeit und Kündigungsfrist</span>
+  {% if darf_schreiben %}<div class="rechts"><a class="btn primaer" href="{{ url_for('vertraege.bearbeiten') }}">Vertrag anlegen</a></div>{% endif %}</div>
 
 <div class="kpis">
-  <div class="kpi"><div class="label">Fixkosten + Abos pro Monat</div><div class="wert">{{ summe_monat|euro_rund }}</div><div class="unter">Jahresbeiträge anteilig</div></div>
-  <div class="kpi"><div class="label">davon Abos</div><div class="wert">{{ summe_abo|euro_rund }}</div><div class="unter">{{ (summe_abo * 12)|euro_rund }} im Jahr</div></div>
-  <div class="kpi"><div class="label">Hinweise</div><div class="wert">{{ hinweise|length }}</div><div class="unter">Preisänderungen, ausgebliebene Zahlungen</div></div>
+  <div class="kpi"><div class="label">Pro Monat gesamt</div><div class="wert">{{ summe_monat|euro_rund }}</div><div class="unter">Jahresbeiträge anteilig · {{ (summe_monat * 12)|euro_rund }} im Jahr</div></div>
+  {% for a, name in arten.items() %}<div class="kpi"><div class="label">davon {{ name }}</div><div class="wert">{{ summe_je_art[a]|euro_rund }}</div><div class="unter">pro Monat</div></div>{% endfor %}
 </div>
 
+{% for e in kuendigungen %}
+<div class="flash warn">Kündigungsfrist <b>{{ e.v.name }}</b>: kündigen bis {{ e.k.kuendigen_bis|string|datum }}, sonst verlängert sich der Vertrag bis {{ (e.k.ende|string)|datum }}{% if e.v.verlaengerung_monate %} und danach um {{ e.v.verlaengerung_monate }} Monate{% endif %}. <a href="{{ url_for('vertraege.bearbeiten', vid=e.v.id) }}">Öffnen</a></div>
+{% endfor %}
+
 <section class="karte ohne-rand">
-  <div class="kopf"><h2 style="margin:0">Bestätigt</h2></div>
-  {{ tabelle(bestaetigt, 'Noch nichts bestätigt. Unten erkannte Zahlungen als Fixkosten oder Abo markieren.') }}
+  <div class="kopf" style="padding:16px 16px 0"><h2 style="margin:0">Aktive Verträge ({{ aktiv|length }})</h2></div>
+  <div class="scroll"><table class="tab" style="min-width:760px">
+    <thead><tr><th>Vertrag</th><th>Rhythmus</th><th style="text-align:right">Betrag</th><th style="text-align:right">pro Monat</th><th>Letzte · nächste Zahlung</th><th>Laufzeit</th></tr></thead>
+    <tbody>{% for v in aktiv %}<tr>
+      <td><a href="{{ url_for('vertraege.bearbeiten', vid=v.id) }}"><b>{{ v.name }}</b></a> <span class="tag {{ 'info' if v.art == 'abo' }}">{{ arten[v.art] }}</span>
+        <div class="leise">{{ v.kat_pfad or 'ohne Kategorie' }} · {{ v.anzahl }} Zahlung{{ 'en' if v.anzahl != 1 }}</div>
+        {% if v.aenderung %}<span class="tag {{ 'bad' if v.aenderung > 0 else 'ok' }}">Preis {{ '+' if v.aenderung > 0 }}{{ v.aenderung|euro }} (vorher {{ v.vorher|euro }})</span>{% endif %}
+        {% if v.ausgeblieben %}<span class="tag warn">Zahlung ausgeblieben</span>{% endif %}</td>
+      <td>{{ v.rhythmus }}</td><td class="betrag">{{ v.betrag|euro }}</td><td class="betrag">{{ v.monatlich|euro if v.monatlich else '–' }}</td>
+      <td class="leise" style="white-space:nowrap">{{ v.letzte|datum if v.letzte else '–' }}{% if v.naechste %}<br>≈ {{ v.naechste|datum }}{% endif %}</td>
+      <td class="klein">{{ kuendigungsinfo(v.kuendigung) }}</td></tr>
+    {% else %}<tr><td colspan="6" class="leer">Noch keine Verträge. Lege einen an oder übernimm unten eine erkannte regelmäßige Zahlung.</td></tr>{% endfor %}</tbody></table></div>
 </section>
 
 <section class="karte ohne-rand">
-  <div class="kopf"><h2 style="margin:0">Erkannt, noch nicht eingeordnet ({{ erkannt|length }})</h2></div>
-  {{ tabelle(erkannt, 'Keine weiteren regelmäßigen Zahlungen gefunden. Erkennung braucht mindestens drei monatliche oder zwei jährliche Zahlungen.') }}
+  <div class="kopf" style="padding:16px 16px 0"><h2 style="margin:0">Erkannte regelmäßige Zahlungen ({{ erkannt|length }})</h2><span class="leise">noch keinem Vertrag zugeordnet</span></div>
+  <div class="scroll"><table class="tab" style="min-width:760px">
+    <thead><tr><th>Empfänger</th><th>Rhythmus</th><th style="text-align:right">Betrag</th><th>Letzte</th><th></th></tr></thead>
+    <tbody>{% for v in erkannt %}<tr>
+      <td><a href="{{ url_for('buchungen.liste', partei=v.name[:30], monat='alle') }}"><b>{{ v.name }}</b></a><div class="leise">{{ v.kat_pfad or 'ohne Kategorie' }} · {{ v.anzahl }} Zahlungen</div></td>
+      <td>{{ v.rhythmus }}</td><td class="betrag">{{ v.betrag|euro }}</td><td class="leise">{{ v.letzte|datum }}</td>
+      <td>{% if darf_schreiben %}<form method="post" action="{{ url_for('vertraege.markieren') }}" class="formreihe" style="gap:4px;justify-content:flex-end">{{ csrf() }}
+        <input type="hidden" name="partner_key" value="{{ v.partner_key }}"><input type="hidden" name="name" value="{{ v.name }}"><input type="hidden" name="monate" value="{{ v.monate }}">
+        <button class="btn klein" name="art" value="abo">Abo</button><button class="btn klein" name="art" value="fix">Fixkosten</button><button class="btn klein" name="art" value="vertrag">Vertrag</button>
+        <button class="btn klein" name="art" value="ignoriert" title="dauerhaft ausblenden">kein Vertrag</button></form>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="5" class="leer">Keine weiteren regelmäßigen Zahlungen gefunden.</td></tr>{% endfor %}</tbody></table></div>
 </section>
-<p class="leise">Bestätigte Verträge fließen in die Budget-Prognose ein (noch ausstehende Zahlungen im laufenden Monat). „Kein Vertrag“ blendet eine Gegenpartei dauerhaft aus, z. B. den Supermarkt.</p>
+
+{% if inaktiv %}
+<details class="karte"><summary>Beendete Verträge ({{ inaktiv|length }})</summary>
+  <ul style="margin:10px 0 0;padding-left:18px">{% for v in inaktiv %}<li><a href="{{ url_for('vertraege.bearbeiten', vid=v.id) }}">{{ v.name }}</a> <span class="leise">{{ arten[v.art] }}{% if v.letzte %} · letzte Zahlung {{ v.letzte|datum }}{% endif %}</span></li>{% endfor %}</ul>
+</details>
+{% endif %}
+{% if ausgeblendet %}
+<details class="karte"><summary>Ausgeblendete Gegenparteien ({{ ausgeblendet|length }})</summary>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">{% for a in ausgeblendet %}
+    <form method="post" action="{{ url_for('vertraege.markieren') }}">{{ csrf() }}<input type="hidden" name="partner_key" value="{{ a.partner_key }}"><button class="btn klein" name="art" value="einblenden" title="wieder vorschlagen">{{ a.name }} ✕</button></form>{% endfor %}</div>
+</details>
+{% endif %}
+<p class="leise">Buchungen ordnest du in der Buchung selbst einem Vertrag zu (oder legst dort direkt einen neuen an); Zahlungen derselben Gegenpartei folgen automatisch, auch bei künftigen Importen. Ein Monat vor Ablauf einer Kündigungsfrist erscheint oben auf jeder Seite ein Hinweis.</p>
 {% endblock %}

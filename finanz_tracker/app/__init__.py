@@ -53,6 +53,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     def globale_werte():
         from .services import umbuchungen
         offen = None
+        kuendigungen = []
         if g.get("user"):
             konten = auth.sichtbare_konten()
             if konten:
@@ -60,12 +61,15 @@ def create_app(test_config: dict | None = None) -> Flask:
                 r = db.q1(f"SELECT COUNT(*) AS n FROM buchung WHERE konto_id IN ({marks}) AND ist_umbuchung = 0 "
                           f"AND (kategorie_id IS NULL OR geprueft = 0)", konten)
                 offen = {"pruefen": r["n"], "umbuchungen": len(umbuchungen.offene_vorschlaege(konten))}
+            from .services import vertraege as _vt
+            kuendigungen = _vt.faellige_kuendigungen()
         return {
             "csrf_token": session.get("csrf", ""),
             "user": g.get("user"),
             "darf_schreiben": auth.darf_schreiben(),
             "version": config.VERSION,
             "offen": offen,
+            "kuendigungs_hinweise": kuendigungen,
             "https": config.HTTPS,
         }
 

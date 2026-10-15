@@ -70,13 +70,16 @@
         <option value="tag">Tag hinzufügen</option><option value="tag_weg">Tag entfernen</option>
         <option value="bestaetigen">Als geprüft bestätigen</option>
         <option value="als_umbuchung">Als Umbuchung markieren (Gegenkonto wählen)</option>
-        <option value="umbuchung">Zwei Buchungen als Umbuchung verknüpfen</option></select></label>
+        <option value="umbuchung">Zwei Buchungen als Umbuchung verknüpfen</option>
+        <option value="vertrag">Vertrag / Abo zuordnen</option><option value="darlehen">Darlehen zuordnen</option></select></label>
     <label class="feld" data-fuer="als_umbuchung">Gegenkonto<select name="gegenkonto">{% for k in gegenkonten %}<option value="{{ k.id }}">{{ k.name }}{{ ' (Gegenbuchung automatisch)' if k.typ in ('bargeld', 'depot') }}</option>{% endfor %}<option value="extern">außerhalb des Tools</option></select></label>
     <label class="feld" data-fuer="kategorie" style="flex:1 1 240px">Kategorie{{ kat_select('kategorie_id', kategorien) }}</label>
     <label class="feld" data-fuer="person">Person{{ person_select('person_id', personen) }}</label>
     <label class="feld" data-fuer="monat">Monat<input type="month" name="abrechnungsmonat" value="{{ f.monat if f.monat and f.monat != 'alle' }}" style="min-height:40px"></label>
     <label class="feld" data-fuer="verteilung">Monate<select name="verteilung_monate">{% for v in [1,2,3,4,6,12,24] %}<option value="{{ v }}" {{ 'selected' if v == 12 }}>{{ v }}{{ ' (nicht verteilen)' if v == 1 }}</option>{% endfor %}</select></label>
     <label class="feld" data-fuer="tag">Tag<input type="text" name="tag_name" list="tagliste" placeholder="neu oder vorhanden"></label>
+    <label class="feld" data-fuer="vertrag">Vertrag<select name="vertrag_id"><option value="">– Zuordnung entfernen –</option>{% for v in vertrag_liste %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}</select></label>
+    <label class="feld" data-fuer="darlehen">Darlehen<select name="darlehen_konto_id"><option value="">– Zuordnung entfernen –</option>{% for d in darlehen_liste %}<option value="{{ d.konto_id }}">{{ d.name }}</option>{% endfor %}</select></label>
     <label class="feld" data-fuer="tag_weg">Tag<select name="tag_id">{% for t in alle_tags %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></label>
     <button class="btn" type="submit">Ausführen</button>
   </div>
@@ -126,7 +129,9 @@
                 <input type="text" class="kat-eingabe inline-eingabe{{ ' leer' if not b.kat_pfad }}" list="kat-liste" value="{{ b.kat_pfad or '' }}" placeholder="ohne Kategorie" autocomplete="off" aria-label="Kategorie"><input type="hidden" class="kat-id" value="{{ b.kategorie_id or '' }}"></div>
             {% elif b.kat_pfad %}{{ b.kat_pfad }}{% else %}<span class="tag warn">ohne Kategorie</span>{% endif %}
             {% if not teile %}{{ quelle(b) }}{% endif %}
-            {% if b.ruecklage_name %}<span class="quelle">aus Rücklage „{{ b.ruecklage_name }}“</span>{% endif %}</td>
+            {% if b.ruecklage_name %}<span class="quelle">aus Rücklage „{{ b.ruecklage_name }}“</span>{% endif %}
+            {% if b.vertrag_name %}<a class="quelle" href="{{ url_for('vertraege.bearbeiten', vid=b.vertrag_id) }}">{{ {'abo': 'Abo', 'fix': 'Fixkosten'}.get(b.vertrag_art, 'Vertrag') }}: {{ b.vertrag_name }}</a>{% endif %}
+            {% if b.darlehen_name %}<a class="quelle" href="{{ url_for('darlehen.detail', kid=b.darlehen_konto_id) }}">Darlehen: {{ b.darlehen_name }}</a>{% endif %}</td>
           <td class="leise sp-neben">{% if darf_schreiben %}<div class="inline-feld" data-bid="{{ b.id }}" data-feld="person"><select class="inline-eingabe" aria-label="Person"><option value="">–</option>{% for p in personen %}<option value="{{ p.id }}" {{ 'selected' if b.person_id == p.id }}>{{ p.name }}</option>{% endfor %}</select></div>{% else %}{{ b.person_name or '' }}{% endif %}</td>
           <td class="sp-neben sp-tags">{% if darf_schreiben %}<div class="inline-feld" data-bid="{{ b.id }}" data-feld="tags"><input type="text" class="inline-eingabe" list="tagliste" value="{{ (tags_je.get(b.id) or [])|map(attribute='name')|join(', ') }}" placeholder="–" autocomplete="off" aria-label="Tags"></div>{% else %}{{ tagliste(tags_je.get(b.id)) }}{% endif %}</td>
           <td class="betrag {{ 'pos' if b.betrag_cent > 0 }}" style="{{ 'color:#56625D' if b.ist_umbuchung }}">{{ b.betrag_cent|euro_vz }}</td>

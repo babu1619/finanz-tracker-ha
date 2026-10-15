@@ -513,6 +513,48 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Suche auf Kategorien- und Regelseite (Umlaute egal, mehrere Wörter = alle müssen vorkommen)
+  const norm = (t) => (t || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ß/g, "ss");
+  document.querySelectorAll("input[data-suche]").forEach((feld) => {
+    const ziel = document.querySelector(feld.dataset.ziel);
+    const info = ziel.querySelector("[data-suche-info]");
+    const leer = ziel.querySelector("[data-suche-leer]");
+    const zeilen = Array.from(ziel.querySelectorAll("[data-text]"));
+    const baum = feld.dataset.suche === "baum";
+    const nachId = {};
+    zeilen.forEach((z) => { if (z.dataset.id) nachId[z.dataset.id] = z; });
+    const filtern = () => {
+      const woerter = norm(feld.value).split(/\s+/).filter(Boolean);
+      zeilen.forEach((z) => z.classList.remove("treffer", "kontext"));
+      if (!woerter.length) {
+        zeilen.forEach((z) => { z.hidden = false; });
+        if (info) info.textContent = "";
+        if (leer) leer.hidden = true;
+        return;
+      }
+      const passt = (z) => woerter.every((w) => norm(z.dataset.text).includes(w));
+      let treffer = zeilen.filter(passt);
+      const sichtbar = new Set(treffer);
+      if (baum) {
+        // Unterkategorien eines Treffers mit anzeigen, Oberkategorien als Einordnung
+        const kinder = {};
+        zeilen.forEach((z) => { (kinder[z.dataset.parent] = kinder[z.dataset.parent] || []).push(z); });
+        const nachUnten = (z) => (kinder[z.dataset.id] || []).forEach((k) => { sichtbar.add(k); nachUnten(k); });
+        treffer.forEach(nachUnten);
+        treffer.forEach((z) => {
+          let p = nachId[z.dataset.parent];
+          while (p) { if (!sichtbar.has(p)) { sichtbar.add(p); p.classList.add("kontext"); } p = nachId[p.dataset.parent]; }
+        });
+      }
+      zeilen.forEach((z) => { z.hidden = !sichtbar.has(z); });
+      treffer.forEach((z) => z.classList.add("treffer"));
+      if (info) info.textContent = `${treffer.length} Treffer`;
+      if (leer) leer.hidden = treffer.length > 0;
+    };
+    feld.addEventListener("input", filtern);
+    feld.addEventListener("keydown", (e) => { if (e.key === "Escape") { feld.value = ""; filtern(); } });
+  });
+
   // Dashboard: Unterkategorien auf- und zuklappen (Zustand je Gerät merken)
   const offenKey = "ft-kat-offen";
   let offen = [];

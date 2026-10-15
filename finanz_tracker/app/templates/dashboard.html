@@ -61,7 +61,7 @@
       <a href="{{ url_for('buchungen.liste', status='ungeprueft', monat='alle') }}"><span class="zahlkreis warn">{{ ungeprueft }}</span><span style="flex:1">Automatisch zugeordnet, ungeprüft</span><span aria-hidden="true">›</span></a>
       <a href="{{ url_for('pruefen.index') }}#umbuchungen"><span class="zahlkreis info">{{ umbuchungs_vorschlaege }}</span><span style="flex:1">Umbuchungsvorschläge bestätigen</span><span aria-hidden="true">›</span></a>
       {% for v in vt_hinweise %}
-      <a href="{{ url_for('vertraege.index') }}"><span class="zahlkreis {{ 'warn' if v.ausgeblieben or (v.aenderung or 0) > 0 else 'info' }}">€</span><span style="flex:1">{{ v.name }}: {% if v.ausgeblieben %}Zahlung ausgeblieben{% else %}Preis {{ '+' if v.aenderung > 0 }}{{ v.aenderung|euro }}{% endif %}</span><span aria-hidden="true">›</span></a>
+      <a href="{{ url_for('vertraege.bearbeiten', vid=v.id) }}"><span class="zahlkreis {{ 'warn' if v.ausgeblieben or (v.aenderung or 0) > 0 else 'info' }}">€</span><span style="flex:1">{{ v.name }}: {% if v.ausgeblieben %}Zahlung ausgeblieben{% else %}Preis {{ '+' if v.aenderung > 0 }}{{ v.aenderung|euro }}{% endif %}</span><span aria-hidden="true">›</span></a>
       {% endfor %}
       {% for h in darlehen_hinweise %}
       <a href="{{ url_for('darlehen.detail', kid=h.kid) }}"><span class="zahlkreis warn">%</span><span style="flex:1">{{ h.text }}</span><span aria-hidden="true">›</span></a>

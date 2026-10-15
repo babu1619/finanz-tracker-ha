@@ -87,6 +87,26 @@
   </form>
   {% endif %}
 </div>
+{% if darf_schreiben and b.konto_typ != 'darlehen' %}
+<form method="post" action="{{ url_for('buchungen.zuordnung_speichern', bid=b.id) }}" class="karte" style="display:flex;flex-direction:column;gap:10px">{{ csrf() }}
+  <input type="hidden" name="zurueck" value="{{ request.full_path }}">
+  <h2 style="margin:0">Abo, Fixkosten oder Vertrag · Darlehen</h2>
+  <div class="formreihe">
+    <label class="feld" style="flex:2 1 240px">Gehört zu<select name="vertrag" data-art-wahl>
+      <option value="">– keinem Vertrag –</option>
+      {% for v in vertrag_liste %}<option value="{{ v.id }}" {{ 'selected' if b.vertrag_id == v.id }}>{{ vertrag_arten.get(v.art, 'Vertrag') }}: {{ v.name }}</option>{% endfor %}
+      <option value="neu">+ neu anlegen …</option></select></label>
+    {% if darlehen_alle %}<label class="feld">Darlehen<select name="darlehen"><option value="">–</option>{% for d in darlehen_alle %}<option value="{{ d.konto_id }}" {{ 'selected' if b.darlehen_konto_id == d.konto_id }}>{{ d.name }}</option>{% endfor %}</select></label>{% endif %}
+  </div>
+  <div class="formreihe" data-nur="neu" hidden>
+    <label class="feld">Art<select name="neu_art">{% for a, n in vertrag_arten.items() %}<option value="{{ a }}">{{ n }}</option>{% endfor %}</select></label>
+    <label class="feld">Rhythmus<select name="neu_rhythmus">{% for m, n in [(1, 'monatlich'), (2, 'alle 2 Monate'), (3, 'vierteljährlich'), (6, 'halbjährlich'), (12, 'jährlich'), (24, 'alle 2 Jahre'), (0, 'unregelmäßig')] %}<option value="{{ m }}">{{ n }}</option>{% endfor %}</select></label>
+    <label class="feld" style="flex:2 1 200px">Name<input type="text" name="neu_name" value="{{ b.gegenpartei }}"></label>
+  </div>
+  <div class="formreihe" style="align-items:center"><button class="btn" type="submit">Zuordnung speichern</button>
+    <span class="leise klein" style="flex:1 1 240px">Ein neuer Vertrag übernimmt automatisch alle Zahlungen derselben Gegenpartei. Laufzeit und Kündigungsfrist ergänzt du danach unter „Abos &amp; Verträge“.{% if b.vertrag_id %} <a href="{{ url_for('vertraege.bearbeiten', vid=b.vertrag_id) }}">Vertrag öffnen</a>{% endif %}</span></div>
+</form>
+{% endif %}
 {% if sondertilgung %}
 <div class="karte"><span class="tag ok">Sondertilgung</span> für <a href="{{ url_for('darlehen.detail', kid=sondertilgung.konto_id) }}">{{ sondertilgung.darlehen_name }}</a> am {{ sondertilgung.datum|datum }} über {{ sondertilgung.betrag_cent|euro }} – im Tilgungsplan berücksichtigt.</div>
 {% elif darf_schreiben and darlehen_liste %}

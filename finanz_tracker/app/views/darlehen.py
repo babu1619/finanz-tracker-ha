@@ -92,7 +92,24 @@ def detail(kid):
         j["rest"] = z["rest"]
     return render_template("darlehen_detail.html", k=k, d=d, sim=sim, jahre=jahre, konto_saldo=konto_saldo,
                            hat_buchungen=hat_buchungen, monat=aktueller_monat(), a=a,
-                           ereignis_info=ereignis_info, bausparvertraege=bs.alle(darlehen_konto_id=kid))
+                           ereignis_info=ereignis_info, bausparvertraege=bs.alle(darlehen_konto_id=kid),
+                           zahlungen=dl.zahlungen(kid, auth.sichtbare_konten()))
+
+
+@bp.route("/<int:kid>/zahlungen-zuordnen", methods=["POST"])
+@auth.schreibrecht
+def zahlungen_zuordnen(kid):
+    d = dl.lade(kid)
+    if kid not in _konten() or not d:
+        abort(404)
+    if not d["zahlkonto_id"]:
+        melde("Erst unter „Konditionen ändern“ hinterlegen, von welchem Konto die Rate bezahlt wird.", "warn")
+        return redirect(url_for("darlehen.detail", kid=kid))
+    n = dl.zahlungen_zuordnen(konto_id=kid)
+    commit()
+    melde(f"{n} Raten über {d['rate_cent'] / 100:.2f} € zugeordnet.".replace(".", ",", 1) if n else
+          "Keine weiteren Buchungen mit genau der Monatsrate im Zahlkonto gefunden.")
+    return redirect(url_for("darlehen.detail", kid=kid))
 
 
 @bp.route("/<int:kid>/konditionen", methods=["GET", "POST"])
@@ -126,8 +143,9 @@ def konditionen(kid):
             exe("INSERT INTO darlehen (immobilie_id, ursprung_cent, sollzins, rate_cent, erste_rate, zinsbindung_bis, "
                 "sondertilgung_prozent, zahlkonto_id, erinnerung_monate, konto_id) VALUES (?,?,?,?,?,?,?,?,?,?)", (*werte, kid))
         log_aenderung(g.user["id"], "darlehen", kid, "konditionen", dict(f))
+        n = dl.zahlungen_zuordnen(konto_id=kid)
         commit()
-        melde("Konditionen gespeichert.")
+        melde("Konditionen gespeichert." + (f" {n} Raten im Zahlkonto dem Darlehen zugeordnet." if n else ""))
         return redirect(url_for("darlehen.detail", kid=kid))
     sichtbar = auth.sichtbare_konten()
     return render_template("darlehen_konditionen.html", k=k, d=d, immobilien=q("SELECT * FROM immobilie ORDER BY name"),

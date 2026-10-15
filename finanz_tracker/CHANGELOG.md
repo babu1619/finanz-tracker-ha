@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.6.0 – Oktober 2026
+
+- Abos & Verträge als eigene Einträge: Art (Abo, Fixkosten, Vertrag), Betrag, frei wählbarer Zahlungsrhythmus, Vertragsbeginn, Laufzeit, automatische Verlängerung, Kündigungsfrist (Tage/Wochen/Monate), „gekündigt zum“. Einen Monat vor Ablauf der Kündigungsfrist erscheint oben auf jeder Seite ein Hinweis. Bisherige Abo-/Fixkosten-Markierungen werden übernommen
+- Buchungen: auf der Detailseite einem Abo/Fixkosten/Vertrag zuordnen oder direkt einen neuen anlegen (Art, Rhythmus, Name); Zahlungen derselben Gegenpartei folgen automatisch, auch bei künftigen Importen. Sammelaktion „Vertrag / Abo zuordnen“, Filter je Vertrag, Kennzeichen in der Buchungstabelle
+- Darlehen: Buchungen (z. B. Raten vom Girokonto) einem Darlehen zuordnen – einzeln, per Sammelaktion oder automatisch (Betrag = Monatsrate im Zahlkonto, auch bei neuen Importen). Die Darlehensseite zeigt die gezahlten Beträge je Jahr neben dem Plan
+- Suche auf den Seiten Kategorien (Treffer mit allen Unterkategorien, Oberkategorien zur Einordnung) und Regeln (Name, Bedingungen, Aktionen)
+- Auswertung: neuer Bereich „Eigene Auswertungen“ mit frei konfigurierbaren Diagrammen – Säulen, gestapelt, waagerechte Balken, Linie, Fläche, Ring, Torte, Tabelle, Kennzahl, Wärmekarte; Werte (Ausgaben, Einnahmen, Saldo, Anzahl) nach Kategorien, Unterkategorien, Tags, Personen, Konten, Gegenparteien, Verträgen; je Monat/Quartal/Jahr oder als Summe; Vorjahresvergleich, kumuliert, Top-N. Mehrere Ansichten je Benutzer, Klick führt zu den Buchungen. Läuft ohne Internet (eigene Diagramm-Bibliothek)
+
 ## 0.5.0 – Oktober 2026
 
 - Kreditkartenabrechnung einlesen (z. B. Hanseatic Bank): als PDF oder als Foto/Ausschnitt der Abrechnung, unter Import → „Abrechnung (PDF) oder Screenshot“. Buchungs- und Transaktionsdatum, mehrzeilige Beschreibung und Betrag werden erkannt; der Saldo wird geprüft (alter Saldo + Umsätze = neuer Saldo), beim ersten Import als Startsaldo übernommen und danach wie beim CSV-Import abgeglichen. Eingescannte PDFs laufen über die Texterkennung. Umsätze, die schon per Screenshot übernommen wurden, werden als „evtl. vorhanden“ markiert

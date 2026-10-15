@@ -5,6 +5,7 @@
 {%- endmacro %}
 {% block inhalt %}
 <div class="kopf"><h1>Auswertung</h1>
+  <div class="umschalter" role="group" aria-label="Bereich"><a class="an" href="{{ url_for('auswertung.index') }}">Standard</a><a href="{{ url_for('auswertung.eigene') }}">Eigene Auswertungen</a></div>
   <span class="leise">{{ von|monat }} bis {{ bis|monat }}{% if person %} · {{ person.name }}{% endif %}</span></div>
 
 <form method="get" class="karte formreihe">

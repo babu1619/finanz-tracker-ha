@@ -50,6 +50,9 @@
 </header>
 {% endif %}
 <main>
+  {% for e in kuendigungs_hinweise %}{% if request.endpoint != 'vertraege.index' %}
+  <div class="flash warn hinweisband" role="status">Kündigungsfrist <b>{{ e.v.name }}</b> endet am {{ e.k.kuendigen_bis|string|datum }}{% if e.k.tage == 0 %} (heute){% elif e.k.tage == 1 %} (morgen){% else %} (in {{ e.k.tage }} Tagen){% endif %} – sonst Verlängerung bis {{ e.k.ende|string|datum }}. <a href="{{ url_for('vertraege.bearbeiten', vid=e.v.id) }}">Vertrag öffnen</a></div>
+  {% endif %}{% endfor %}
   {% with meldungen = get_flashed_messages(with_categories=true) %}
     {% for art, text in meldungen %}<div class="flash {{ art }}" role="status">{{ text }}</div>{% endfor %}
   {% endwith %}

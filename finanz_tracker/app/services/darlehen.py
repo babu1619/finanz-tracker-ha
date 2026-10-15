@@ -231,6 +231,9 @@ def erfasse_sondertilgung(konto_id: int, datum: str, betrag_cent: int, notiz=Non
                   (konto_id, datum, betrag_cent, "Sondertilgung",
                    f"Sondertilgung aus {zahl['name']}" if zahl else "Sondertilgung (von Hand erfasst)",
                    partner_key("Sondertilgung"), monat_von(datum), notiz, "manuell:" + secrets.token_hex(8)))
+    if zahlung_buchung_id:
+        exe("UPDATE buchung SET darlehen_konto_id = ? WHERE id = ? AND darlehen_konto_id IS NULL",
+            (konto_id, zahlung_buchung_id))
     return exe("INSERT INTO darlehen_ereignis (konto_id, datum, art, betrag_cent, notiz, buchung_id, zahlung_buchung_id) "
                "VALUES (?,?,'sondertilgung',?,?,?,?)", (konto_id, datum, betrag_cent, notiz, bid, zahlung_buchung_id))
 
@@ -248,3 +251,38 @@ def loesche_ereignis(konto_id: int, eid: int) -> None:
 def sondertilgung_zu_buchung(buchung_id: int):
     return q1("""SELECT e.*, k.name AS darlehen_name FROM darlehen_ereignis e JOIN konto k ON k.id = e.konto_id
                  WHERE e.zahlung_buchung_id = ? OR e.buchung_id = ?""", (buchung_id, buchung_id))
+
+
+def zahlungen_zuordnen(buchung_ids: list[int] | None = None, konto_id: int | None = None) -> int:
+    """Raten im Zahlkonto (Betrag = Monatsrate) automatisch ihrem Darlehen zuordnen. Gibt die Anzahl zurück."""
+    from ..db import exe
+    n = 0
+    for d in q("SELECT d.*, k.aktiv FROM darlehen d JOIN konto k ON k.id = d.konto_id WHERE d.zahlkonto_id IS NOT NULL"
+               + (" AND d.konto_id = ?" if konto_id else ""), (konto_id,) if konto_id else ()):
+        sql = ("UPDATE buchung SET darlehen_konto_id = ? WHERE konto_id = ? AND betrag_cent = ? "
+               "AND darlehen_konto_id IS NULL AND ist_umbuchung = 0")
+        params: list = [d["konto_id"], d["zahlkonto_id"], -d["rate_cent"]]
+        if buchung_ids is not None:
+            if not buchung_ids:
+                return 0
+            sql += f" AND id IN ({','.join('?' * len(buchung_ids))})"
+            params += list(buchung_ids)
+        vorher = q1("SELECT COUNT(*) AS n FROM buchung WHERE darlehen_konto_id = ?", (d["konto_id"],))["n"]
+        exe(sql, params)
+        n += q1("SELECT COUNT(*) AS n FROM buchung WHERE darlehen_konto_id = ?", (d["konto_id"],))["n"] - vorher
+    return n
+
+
+def zahlungen(konto_id: int, sichtbar: list[int]) -> dict:
+    """Dem Darlehen zugeordnete Zahlungen (z. B. Raten vom Girokonto) je Jahr, verglichen mit dem Plan."""
+    marks = ",".join("?" * len(sichtbar)) or "NULL"
+    rows = q(f"""SELECT b.*, k.name AS konto_name FROM buchung b JOIN konto k ON k.id = b.konto_id
+                 WHERE b.darlehen_konto_id = ? AND b.konto_id IN ({marks}) ORDER BY b.buchungsdatum DESC""",
+             [konto_id] + list(sichtbar))
+    jahre: dict = {}
+    for r in rows:
+        j = jahre.setdefault(r["buchungsdatum"][:4], {"summe": 0, "anzahl": 0})
+        j["summe"] -= r["betrag_cent"]
+        j["anzahl"] += 1
+    return {"liste": rows[:24], "anzahl": len(rows), "jahre": dict(sorted(jahre.items(), reverse=True)),
+            "summe": -sum(r["betrag_cent"] for r in rows)}

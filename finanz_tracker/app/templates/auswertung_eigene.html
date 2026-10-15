@@ -1,0 +1,71 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Eigene Auswertungen{% endblock %}
+{% block inhalt %}
+<div class="kopf"><h1>Auswertung</h1>
+  <div class="umschalter" role="group" aria-label="Bereich"><a href="{{ url_for('auswertung.index') }}">Standard</a><a class="an" href="{{ url_for('auswertung.eigene') }}">Eigene Auswertungen</a></div>
+  <div class="rechts"><button class="btn primaer" type="button" id="dg-neu">Diagramm hinzufügen</button></div></div>
+
+<div class="kopf ansichten">
+  <div class="chips" role="group" aria-label="Ansichten">
+    {% for a in ansichten %}<a href="{{ url_for('auswertung.eigene', ansicht=a.id) }}" class="{{ 'an' if a.id == aktuell.id }}">{{ a.name }}</a>{% endfor %}
+  </div>
+  <details class="ansicht-menue rechts"><summary class="btn klein">Ansichten verwalten</summary>
+    <div class="karte" style="display:flex;flex-direction:column;gap:10px">
+      <form method="post" action="{{ url_for('auswertung.ansicht', aid=aktuell.id) }}" class="formreihe" style="align-items:flex-end">{{ csrf() }}
+        <label class="feld">„{{ aktuell.name }}“ umbenennen<input type="text" name="name" value="{{ aktuell.name }}" maxlength="60" required></label>
+        <button class="btn klein" type="submit">Umbenennen</button></form>
+      <form method="post" action="{{ url_for('auswertung.ansicht') }}" class="formreihe" style="align-items:flex-end">{{ csrf() }}
+        <label class="feld">Neue Ansicht<input type="text" name="name" placeholder="z. B. Mobilität, Urlaub, Steuer" maxlength="60" required></label>
+        <button class="btn klein" type="submit">Anlegen</button></form>
+      <div class="formreihe">
+        <form method="post" action="{{ url_for('auswertung.ansicht', aid=aktuell.id) }}" data-frage="Ansicht auf die Standard-Diagramme zurücksetzen?">{{ csrf() }}<button class="btn klein" name="aktion" value="zuruecksetzen">Standard-Diagramme laden</button></form>
+        {% if ansichten|length > 1 %}<form method="post" action="{{ url_for('auswertung.ansicht', aid=aktuell.id) }}" data-frage="Ansicht „{{ aktuell.name }}“ löschen?">{{ csrf() }}<button class="btn klein gefahr" name="aktion" value="loeschen">Ansicht löschen</button></form>{% endif %}
+      </div>
+    </div></details>
+</div>
+
+<div class="dg-raster" id="dg-raster" aria-live="polite"></div>
+<p class="leer" id="dg-leer" hidden>Diese Ansicht ist noch leer. Mit „Diagramm hinzufügen“ legst du das erste an.</p>
+<p class="leise klein">Ein Klick auf eine Säule, ein Segment, einen Balken oder einen Tabellenzeilen-Namen öffnet die passenden Buchungen. Die Ansichten gehören deinem Benutzer; andere Familienmitglieder haben ihre eigenen.</p>
+
+<dialog id="dg-editor" class="dg-editor" aria-labelledby="dg-editor-titel">
+  <form method="dialog" id="dg-form">
+    <div class="kopf"><h2 id="dg-editor-titel" style="margin:0">Diagramm</h2><button class="btn klein rechts" value="abbrechen" aria-label="Schließen">✕</button></div>
+    <div class="dg-editor-inhalt">
+      <div class="dg-einstellungen">
+        <label class="feld">Titel<input type="text" name="titel" maxlength="80" placeholder="wird sonst automatisch gebildet"></label>
+        <div class="formreihe">
+          <label class="feld">Darstellung<select name="typ">{% for k, v in optionen.typen.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+          <label class="feld">Breite<select name="breite"><option value="halb">halbe Breite</option><option value="voll">volle Breite</option></select></label>
+        </div>
+        <div class="formreihe">
+          <label class="feld">Wert<select name="messgroesse">{% for k, v in optionen.messgroessen.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+          <label class="feld">Aufteilen nach<select name="gruppe">{% for k, v in optionen.gruppen.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+        </div>
+        <label class="feld" data-nur-gruppe="unterkategorie">Kategorie<select name="eltern">{% for k in optionen.kategorien %}<option value="{{ k.id }}">{{ k.name }}</option>{% endfor %}</select></label>
+        <label class="feld" data-nur-gruppe="kategorie tag person konto vertrag">Nur diese (leer = alle; Strg/lange tippen für mehrere)
+          <select name="auswahl" multiple size="6"></select></label>
+        <div class="formreihe">
+          <label class="feld">Zeitachse<select name="zeit">{% for k, v in optionen.zeiten.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+          <label class="feld">Zeitraum<select name="zeitraum">{% for k, v in optionen.zeitraeume.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+        </div>
+        <div class="formreihe" data-nur-zeitraum="eigen">
+          <label class="feld">von<input type="month" name="von" style="min-height:40px"></label>
+          <label class="feld">bis<input type="month" name="bis" style="min-height:40px"></label>
+        </div>
+        <div class="formreihe" style="align-items:center">
+          <label class="check"><input type="checkbox" name="vergleich" value="vorjahr"> mit Vorjahr vergleichen</label>
+          <label class="check"><input type="checkbox" name="kumuliert" value="1"> kumuliert (laufende Summe)</label>
+          <label class="feld" style="flex:0 1 150px">höchstens Reihen<input type="number" name="top" min="0" max="30" placeholder="alle"></label>
+        </div>
+      </div>
+      <div class="dg-vorschau"><div class="leise klein">Vorschau</div><div class="dg-flaeche" id="dg-vorschau"></div></div>
+    </div>
+    <div class="formreihe" style="margin-top:12px"><button class="btn primaer" value="speichern" id="dg-speichern">Übernehmen</button><button class="btn" value="abbrechen">Abbrechen</button></div>
+  </form>
+</dialog>
+
+<script type="application/json" id="dg-daten">{{ {"aid": aktuell.id, "diagramme": diagramme, "optionen": optionen}|tojson }}</script>
+<script src="{{ url_for('static', filename='diagramme.js') }}?v={{ version }}"></script>
+<script src="{{ url_for('static', filename='auswertung.js') }}?v={{ version }}"></script>
+{% endblock %}

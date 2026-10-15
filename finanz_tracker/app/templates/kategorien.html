@@ -6,15 +6,18 @@
   <span class="leise">Beliebig tief · Summen {{ monat|monat }} inklusive Unterkategorien</span>
 </div>
 <div class="reihe">
-  <section class="karte breit baum" style="padding:10px 8px">
+  <section class="karte breit baum" style="padding:10px 8px" id="katbaum">
+    <div class="suchzeile"><input type="search" class="suchfeld" data-suche="baum" data-ziel="#katbaum" placeholder="Kategorie suchen, z. B. „auto“ oder „versich“" aria-label="Kategorien durchsuchen" autocomplete="off">
+      <span class="leise klein" data-suche-info></span></div>
     {% for k in kategorien %}
-    <a class="zeile" href="{{ url_for('kategorien.bearbeiten', kid=k.id) if darf_schreiben else url_for('buchungen.liste', kategorie=k.id, monat=monat) }}">
+    <a class="zeile" data-id="{{ k.id }}" data-parent="{{ k.parent_id or '' }}" data-text="{{ k.name|lower }}" href="{{ url_for('kategorien.bearbeiten', kid=k.id) if darf_schreiben else url_for('buchungen.liste', kategorie=k.id, monat=monat) }}">
       <span class="einr" style="width: {{ k.ebene * 22 }}px"></span>
-      <span class="n ebene{{ k.ebene }}">{{ k.name }}{% if k.art %} <span class="tag {{ 'ok' if k.art == 'einnahme' else 'info' if k.art == 'umbuchung' else '' }}">{{ k.art }}</span>{% endif %}</span>
+      <span class="n ebene{{ k.ebene }}"><span class="name">{{ k.name }}</span>{% if k.art %} <span class="tag {{ 'ok' if k.art == 'einnahme' else 'info' if k.art == 'umbuchung' else '' }}">{{ k.art }}</span>{% endif %}</span>
       <span class="leise klein">{{ anzahl.get(k.id, 0) }} Buchungen</span>
       <span class="mono" style="width:110px;text-align:right">{{ summen.get(k.id)|euro if summen.get(k.id) else '' }}</span>
     </a>
     {% else %}<p class="leer">Noch keine Kategorien.</p>{% endfor %}
+    <p class="leer" data-suche-leer hidden>Keine Kategorie gefunden.</p>
   </section>
   {% if darf_schreiben %}
   <form method="post" action="{{ url_for('kategorien.neu') }}" class="karte schmal" style="display:flex;flex-direction:column;gap:12px">

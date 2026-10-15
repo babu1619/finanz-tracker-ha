@@ -94,3 +94,98 @@ def index():
                            personen=q("SELECT * FROM person WHERE aktiv = 1 ORDER BY name"),
                            gegenparteien=gegenparteien, personen_liste=personen_liste,
                            person=q1("SELECT * FROM person WHERE id = ?", (person_id,)) if person_id else None)
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Eigene Auswertungen: frei konfigurierbare Diagramme, je Benutzer gespeichert
+
+import json  # noqa: E402
+
+from flask import abort, g, jsonify, redirect, url_for  # noqa: E402
+
+from ..db import exe, commit, jload  # noqa: E402
+from ..services import auswertung_daten as ad  # noqa: E402
+from . import melde  # noqa: E402
+
+
+def _ansichten():
+    return q("SELECT * FROM auswertung_ansicht WHERE benutzer_id = ? ORDER BY sortierung, id", (g.user["id"],))
+
+
+@bp.route("/eigene")
+@auth.login_required
+def eigene():
+    ansichten = _ansichten()
+    if not ansichten:
+        exe("INSERT INTO auswertung_ansicht (benutzer_id, name, diagramme) VALUES (?, 'Übersicht', ?)",
+            (g.user["id"], json.dumps(ad.standard_diagramme(), ensure_ascii=False)))
+        commit()
+        ansichten = _ansichten()
+    aid = int_oder_none(request.args.get("ansicht")) or ansichten[0]["id"]
+    aktuell = next((x for x in ansichten if x["id"] == aid), ansichten[0])
+    konten_sichtbar = auth.sichtbare_konten()
+    optionen = {
+        "kategorien": [{"id": k["id"], "name": k["pfad"], "ebene": k["ebene"]} for k in kategorien.alle()],
+        "tags": [dict(r) for r in q("SELECT id, name FROM tag ORDER BY name")],
+        "personen": [dict(r) for r in q("SELECT id, name FROM person WHERE aktiv = 1 ORDER BY name")],
+        "konten": [dict(r) for r in q(f"SELECT id, name FROM konto WHERE typ != 'darlehen' AND id IN "
+                                      f"({','.join('?' * len(konten_sichtbar)) or 'NULL'}) ORDER BY sortierung, name",
+                                      konten_sichtbar)],
+        "vertraege": [dict(r) for r in q("SELECT id, name FROM vertrag WHERE art != 'ignoriert' ORDER BY name")],
+        "typen": ad.TYPEN, "gruppen": ad.GRUPPEN, "messgroessen": ad.MESSGROESSEN, "zeiten": ad.ZEITEN,
+        "zeitraeume": ad.ZEITRAEUME,
+    }
+    return render_template("auswertung_eigene.html", ansichten=ansichten, aktuell=aktuell,
+                           diagramme=jload(aktuell["diagramme"], []), optionen=optionen)
+
+
+@bp.route("/daten", methods=["POST"])
+@auth.login_required
+def daten():
+    konfig = request.get_json(silent=True) or {}
+    konten = statistik.basis_konten(auth.sichtbare_konten())
+    try:
+        return jsonify(ad.berechne(konten, konfig))
+    except (ValueError, KeyError, TypeError) as exc:
+        return jsonify({"fehler": f"Einstellung ungültig: {exc}"}), 400
+
+
+@bp.route("/ansicht", methods=["POST"])
+@bp.route("/ansicht/<int:aid>", methods=["POST"])
+@auth.login_required
+def ansicht(aid=None):
+    if aid:
+        a = q1("SELECT * FROM auswertung_ansicht WHERE id = ? AND benutzer_id = ?", (aid, g.user["id"]))
+        if not a:
+            abort(404)
+    daten_ = request.get_json(silent=True)
+    if daten_ is not None:  # Speichern aus der Seite (JSON)
+        if not aid:
+            abort(400)
+        if "diagramme" in daten_ and isinstance(daten_["diagramme"], list):
+            exe("UPDATE auswertung_ansicht SET diagramme = ? WHERE id = ?",
+                (json.dumps(daten_["diagramme"][:40], ensure_ascii=False), aid))
+        if daten_.get("name", "").strip():
+            exe("UPDATE auswertung_ansicht SET name = ? WHERE id = ?", (daten_["name"].strip()[:60], aid))
+        commit()
+        return jsonify({"ok": True})
+    f = request.form
+    if f.get("aktion") == "loeschen" and aid:
+        exe("DELETE FROM auswertung_ansicht WHERE id = ?", (aid,))
+        commit()
+        melde("Ansicht gelöscht.")
+        return redirect(url_for("auswertung.eigene"))
+    if f.get("aktion") == "zuruecksetzen" and aid:
+        exe("UPDATE auswertung_ansicht SET diagramme = ? WHERE id = ?",
+            (json.dumps(ad.standard_diagramme(), ensure_ascii=False), aid))
+        commit()
+        melde("Ansicht auf die Standard-Diagramme zurückgesetzt.")
+        return redirect(url_for("auswertung.eigene", ansicht=aid))
+    name = f.get("name", "").strip()[:60] or "Neue Ansicht"
+    if aid:
+        exe("UPDATE auswertung_ansicht SET name = ? WHERE id = ?", (name, aid))
+    else:
+        aid = exe("INSERT INTO auswertung_ansicht (benutzer_id, name, sortierung, diagramme) VALUES (?, ?, ?, '[]')",
+                  (g.user["id"], name, len(_ansichten())))
+    commit()
+    return redirect(url_for("auswertung.eigene", ansicht=aid))

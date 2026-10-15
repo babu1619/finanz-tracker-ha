@@ -323,3 +323,72 @@ a.kontolink:hover b { text-decoration: underline; }
 .pdf-symbol { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px; background: #F6EDEC; color: #8A1F18; text-align: center; }
 .pdf-symbol b { font-size: 18px; }
 .pdf-symbol span { font-size: 11px; color: var(--ink2); word-break: break-all; max-height: 60px; overflow: hidden; }
+
+/* 0.6.0: Suche, Verträge */
+.suchzeile { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+.suchzeile .suchfeld { flex: 1 1 240px; min-height: 40px; }
+#katbaum .suchzeile { padding: 4px 8px 6px; }
+.baum .zeile.treffer .name, tr.treffer td b { background: #FFF1C2; border-radius: 3px; }
+.baum .zeile.kontext { opacity: .6; }
+.hinweisband { margin-bottom: 8px; }
+a.quelle { display: inline-block; margin-right: 6px; color: var(--accent); }
+
+/* 0.6.0: Eigene Auswertungen */
+.ansichten { margin-bottom: 4px; }
+.ansicht-menue { position: relative; }
+.ansicht-menue > summary { list-style: none; cursor: pointer; }
+.ansicht-menue > summary::-webkit-details-marker { display: none; }
+.ansicht-menue[open] > .karte { position: absolute; right: 0; top: 40px; z-index: 30; width: min(420px, 90vw); box-shadow: 0 8px 24px rgba(0,0,0,.12); }
+.dg-raster { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+.dg-karte { margin: 0; min-width: 0; position: relative; }
+.dg-karte.voll { grid-column: 1 / -1; }
+.dg-kopf { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.dg-kopf > div:first-child { flex: 1; min-width: 0; }
+.dg-kopf h2 { margin: 0; font-size: 16px; }
+.dg-knoepfe { display: flex; gap: 2px; flex-shrink: 0; opacity: .55; transition: opacity .15s; }
+.dg-karte:hover .dg-knoepfe, .dg-karte:focus-within .dg-knoepfe { opacity: 1; }
+.dg-knoepfe .btn.klein { min-width: 30px; padding: 4px 6px; }
+.dg-flaeche { position: relative; min-height: 120px; }
+.dg-flaeche svg { display: block; overflow: visible; }
+.dg-gitter { stroke: #E3E8E5; stroke-width: 1; }
+.dg-null { stroke: #9AA6A1; stroke-width: 1; }
+.dg-achse { font-size: 11px; fill: var(--quiet); font-family: inherit; }
+.dg-mitte { font-size: 18px; font-weight: 600; fill: var(--ink); font-family: inherit; }
+.dg-markierung { fill: rgba(15,107,92,.07); }
+.dg-legende { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; font-size: 12px; color: var(--ink2); }
+.dg-legende i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.dg-legende .vj i { opacity: .45; }
+.klickbar { cursor: pointer; }
+.dg-legende .klickbar:hover, td.klickbar:hover, th.klickbar:hover { text-decoration: underline; }
+.dg-tooltip { position: absolute; z-index: 20; background: #18211E; color: #fff; border-radius: 8px; padding: 8px 10px; font-size: 12px; pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,.2); max-width: 260px; }
+.dg-tooltip div { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dg-tooltip .fett { font-weight: 600; }
+.dg-tooltip i { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.dg-hbalken { display: flex; flex-direction: column; gap: 6px; }
+.dg-hbalken .zeile { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.dg-hbalken .name { width: 34%; min-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dg-hbalken .spur { flex: 1; height: 10px; background: #EEF2F0; border-radius: 5px; overflow: hidden; }
+.dg-hbalken .balken { display: block; height: 100%; border-radius: 5px; }
+.dg-hbalken .wert { width: 86px; text-align: right; font-family: var(--mono, monospace); font-size: 12px; }
+.dg-hbalken .zeile.klickbar:hover .name { text-decoration: underline; }
+.dg-ring { display: flex; justify-content: center; }
+.dg-tabelle td.zahl, .dg-tabelle th.zahl { text-align: right; font-family: var(--mono, monospace); font-size: 12px; white-space: nowrap; }
+.dg-tabelle .fett { font-weight: 600; }
+.dg-tabelle tfoot td { border-top: 2px solid #C9D1CD; font-weight: 600; }
+.dg-kennzahl { padding: 18px 4px; }
+.dg-kennzahl .wert { font-size: 34px; font-weight: 600; font-family: var(--mono, monospace); }
+.dg-heatmap { border-collapse: separate; border-spacing: 2px; font-size: 11px; }
+.dg-heatmap th { font-weight: 500; color: var(--quiet); padding: 2px 4px; white-space: nowrap; }
+.dg-heatmap th.name { text-align: left; max-width: 160px; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.dg-heatmap td { min-width: 46px; padding: 6px 4px; text-align: center; border-radius: 4px; font-family: var(--mono, monospace); }
+.dg-editor { border: 0; border-radius: 14px; padding: 18px; width: min(980px, 96vw); max-height: 92vh; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.dg-editor::backdrop { background: rgba(24,33,30,.45); }
+.dg-editor-inhalt { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 18px; margin-top: 12px; }
+.dg-einstellungen { display: flex; flex-direction: column; gap: 10px; }
+.dg-einstellungen select[multiple] { min-height: 120px; }
+.dg-vorschau { background: #FAFBFA; border: 1px solid #E3E8E5; border-radius: 10px; padding: 12px; min-width: 0; }
+@media (max-width: 860px) {
+  .dg-raster { grid-template-columns: minmax(0, 1fr); }
+  .dg-editor-inhalt { grid-template-columns: minmax(0, 1fr); }
+  .dg-knoepfe { opacity: 1; }
+}

@@ -41,6 +41,21 @@
   {% endif %}
 </section>
 
+<section class="karte">
+  <div class="kopf"><h2 style="margin:0">Zugeordnete Zahlungen</h2>
+    <span class="rechts">{% if zahlungen.anzahl %}<a href="{{ url_for('buchungen.liste', darlehen=d.konto_id, monat='alle') }}">alle {{ zahlungen.anzahl }} Buchungen</a>{% endif %}</span></div>
+  {% if zahlungen.jahre %}
+  <div class="scroll"><table class="tab" style="margin-top:8px">
+    <thead><tr><th style="padding-left:0">Jahr</th><th style="text-align:right">Zahlungen</th><th style="text-align:right">gezahlt</th><th style="text-align:right">laut Plan (Raten + Sondertilgung)</th></tr></thead>
+    <tbody>{% for j, w in zahlungen.jahre.items() %}{% set plan = jahre.get(j) %}<tr>
+      <td class="mono" style="padding-left:0">{{ j }}</td><td class="betrag">{{ w.anzahl }}</td><td class="betrag">{{ w.summe|euro }}</td>
+      <td class="betrag">{% if plan %}{{ (plan.zins + plan.tilgung + plan.sonder)|euro }}{% else %}–{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<p class="leise">Noch keine Buchungen zugeordnet. Raten vom Girokonto ordnest du in der Buchung selbst zu (Abschnitt „Darlehen“) oder per Sammelaktion in den Buchungen.</p>{% endif %}
+  {% if darf_schreiben %}<form method="post" action="{{ url_for('darlehen.zahlungen_zuordnen', kid=d.konto_id) }}" class="formreihe" style="align-items:center;margin-top:8px">{{ csrf() }}
+    <button class="btn klein" type="submit">Passende Raten automatisch zuordnen</button>
+    <span class="leise klein">{% if d.zahlkonto_id %}sucht im Konto {{ d.zahlkonto_name }} nach Buchungen über genau {{ d.rate_cent|euro }}; neue Importe werden automatisch zugeordnet{% else %}dazu unter „Konditionen ändern“ das Zahlkonto hinterlegen{% endif %}</span></form>{% endif %}
+</section>
+
 {% if bausparvertraege %}<div class="flash ok">Bausparvertrag zur Ablösung: {% for v in bausparvertraege %}<a href="{{ url_for('darlehen.bausparen_detail', vid=v.id) }}">{{ v.name }}</a>{{ ', ' if not loop.last }}{% endfor %}</div>
 {% elif darf_schreiben and d.zinsbindung_bis %}<p class="leise klein"><a href="{{ url_for('darlehen.bausparvertrag', darlehen=d.konto_id) }}">Bausparvertrag für die Anschlussfinanzierung anlegen</a></p>{% endif %}
 

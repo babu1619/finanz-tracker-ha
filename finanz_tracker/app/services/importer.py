@@ -151,6 +151,9 @@ def uebernehmen(token: str, benutzer_id) -> int:
 
     zuordnung.ordne_zu(ids)
     umbuchungen.erkenne(ids)
+    from . import darlehen as dl, vertraege
+    vertraege.zuordnen(ids)
+    dl.zahlungen_zuordnen(ids)
     return lauf_id
 
 

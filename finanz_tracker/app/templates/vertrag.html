@@ -1,0 +1,71 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_suche with context %}
+{% block titel %}{{ v.name if v else 'Vertrag anlegen' }}{% endblock %}
+{% block inhalt %}
+<div class="kopf"><a href="{{ url_for('vertraege.index') }}">‹ Abos &amp; Verträge</a></div>
+{% set k = info.kuendigung if info else none %}
+{% if v %}
+<div class="kopf"><h1>{{ v.name }}</h1><span class="tag {{ 'info' if v.art == 'abo' }}">{{ arten.get(v.art, 'ausgeblendet') }}</span>{% if not v.aktiv %}<span class="tag">beendet</span>{% endif %}</div>
+<div class="kpis">
+  <div class="kpi"><div class="label">Betrag · Rhythmus</div><div class="wert">{{ info.betrag|euro if info else '–' }}</div><div class="unter">{{ info.rhythmus if info else '' }}{% if info and info.monatlich and info.monate != 1 %} · {{ info.monatlich|euro }} pro Monat{% endif %}</div></div>
+  <div class="kpi"><div class="label">Pro Jahr</div><div class="wert">{{ (info.monatlich * 12)|euro_rund if info and info.monatlich else '–' }}</div><div class="unter">{{ info.anzahl if info else 0 }} Zahlungen zugeordnet</div></div>
+  <div class="kpi"><div class="label">Nächste Zahlung</div><div class="wert">{{ info.naechste|datum if info and info.naechste else '–' }}</div><div class="unter">{% if info and info.letzte %}letzte {{ info.letzte|datum }}{% endif %}{% if info and info.ausgeblieben %} · <b>ausgeblieben</b>{% endif %}</div></div>
+  <div class="kpi"><div class="label">Kündigung</div><div class="wert">{% if k %}{{ k.kuendigen_bis|string|datum }}{% else %}–{% endif %}</div>
+    <div class="unter">{% if k %}{% if k.gekuendigt %}gekündigt zum {{ k.gekuendigt|datum }}{% elif k.abgelaufen %}ausgelaufen{% else %}letzter Tag · Laufzeit bis {{ k.ende|string|datum }}{% endif %}{% else %}keine Laufzeit hinterlegt{% endif %}</div></div>
+</div>
+{% if k and k.hinweis %}<div class="flash warn">Die Kündigungsfrist endet am {{ k.kuendigen_bis|string|datum }}.{% if darf_schreiben %} <form method="post" style="display:inline">{{ csrf() }}<button class="btn klein" name="aktion" value="gekuendigt">Ist gekündigt</button></form>{% endif %}</div>{% endif %}
+{% if k and k.verpasst %}<div class="flash bad">Die Kündigungsfrist ist verstrichen; der Vertrag läuft bis {{ k.ende|string|datum }}.</div>{% endif %}
+{% else %}<h1>Vertrag anlegen</h1>{% endif %}
+
+<div class="reihe">
+<form method="post" class="karte breit" style="display:flex;flex-direction:column;gap:12px">{{ csrf() }}
+  <h2 style="margin:0">{{ 'Angaben' if v else 'Neuer Vertrag' }}</h2>
+  <div class="formreihe">
+    <label class="feld" style="flex:2 1 220px">Name<input type="text" name="name" required value="{{ v.name if v }}" placeholder="z. B. Handyvertrag, Netflix, Hausrat"></label>
+    <label class="feld">Art<select name="art">{% for a, n in arten.items() %}<option value="{{ a }}" {{ 'selected' if v and v.art == a }}>{{ n }}</option>{% endfor %}</select></label>
+  </div>
+  <div class="formreihe">
+    <label class="feld">Betrag je Zahlung<input type="text" name="betrag" inputmode="decimal" value="{{ ('%.2f'|format(v.betrag_cent / 100)).replace('.', ',') if v and v.betrag_cent }}" placeholder="z. B. 12,99"></label>
+    <label class="feld">Rhythmus<select name="rhythmus_monate" data-art-wahl>{% set eigen = v and v.rhythmus_monate not in rhythmen %}
+      {% for m, n in rhythmen.items() %}<option value="{{ m }}" {{ 'selected' if (v and v.rhythmus_monate == m) or (not v and m == 1) }}>{{ n }}</option>{% endfor %}
+      <option value="eigen" {{ 'selected' if eigen }}>eigener Rhythmus …</option></select></label>
+    <label class="feld" data-nur="eigen" {{ '' if eigen else 'hidden' }}>alle … Monate<input type="number" name="rhythmus_eigen" min="1" max="120" value="{{ v.rhythmus_monate if eigen }}"></label>
+  </div>
+  <div class="formreihe">
+    <label class="feld">Anbieter<input type="text" name="anbieter" value="{{ v.anbieter or '' if v }}"></label>
+    <label class="feld">Vertragsnummer<input type="text" name="vertragsnummer" value="{{ v.vertragsnummer or '' if v }}"></label>
+    <label class="feld">Konto<select name="konto_id"><option value="">–</option>{% for kk in konten %}<option value="{{ kk.id }}" {{ 'selected' if v and v.konto_id == kk.id }}>{{ kk.name }}</option>{% endfor %}</select></label>
+  </div>
+  <label class="feld">Kategorie{{ kat_suche('kategorie_id', kategorien, v.kategorie_id if v else None, 'vertrag-kat') }}</label>
+  <label class="feld">Zahlungen automatisch zuordnen, Gegenpartei
+    <select name="partner_key"><option value="">– nur von Hand zuordnen –</option>{% for p in partner %}<option value="{{ p.partner_key }}" {{ 'selected' if v and v.partner_key == p.partner_key }}>{{ p.name }} ({{ p.n }})</option>{% endfor %}</select></label>
+  <fieldset class="formreihe" style="border:0;padding:0;margin:0">
+    <legend class="leise" style="margin-bottom:6px">Laufzeit und Kündigung</legend>
+    <label class="feld">Vertragsbeginn<input type="date" name="beginn" value="{{ v.beginn or '' if v }}" style="min-height:40px"></label>
+    <label class="feld">Laufzeit bis<input type="date" name="laufzeit_ende" value="{{ v.laufzeit_ende or '' if v }}" style="min-height:40px"></label>
+    <label class="feld">Verlängert sich um<select name="verlaengerung_monate"><option value="">– endet dann –</option>{% for m in [1, 3, 6, 12, 24] %}<option value="{{ m }}" {{ 'selected' if v and v.verlaengerung_monate == m }}>{{ m }} Monat{{ 'e' if m != 1 }}</option>{% endfor %}</select></label>
+  </fieldset>
+  <div class="formreihe">
+    <label class="feld">Kündigungsfrist<input type="number" name="kuendigungsfrist" min="0" max="365" value="{{ v.kuendigungsfrist if v and v.kuendigungsfrist is not none }}" placeholder="z. B. 3"></label>
+    <label class="feld">Einheit<select name="kuendigungsfrist_einheit">{% for e, n in einheiten.items() %}<option value="{{ e }}" {{ 'selected' if (v and v.kuendigungsfrist_einheit == e) or (not v and e == 'monate') }}>{{ n }} vor Laufzeitende</option>{% endfor %}</select></label>
+    <label class="feld">Gekündigt zum<input type="date" name="gekuendigt_zum" value="{{ v.gekuendigt_zum or '' if v }}" style="min-height:40px"></label>
+  </div>
+  <label class="feld">Notiz<input type="text" name="notiz" value="{{ v.notiz or '' if v }}"></label>
+  {% if v %}<label class="check"><input type="checkbox" name="aktiv" value="1" {{ 'checked' if v.aktiv }}> Vertrag aktiv</label>{% else %}<input type="hidden" name="aktiv" value="1">{% endif %}
+  {% if darf_schreiben %}<div class="formreihe"><button class="btn primaer" type="submit">Speichern</button></div>{% endif %}
+</form>
+
+{% if v %}
+<section class="karte schmal ohne-rand">
+  <div class="kopf" style="padding:16px 16px 0"><h2 style="margin:0">Zahlungen</h2></div>
+  <table class="tab"><tbody>{% for b in zahlungen %}
+    <tr><td><a href="{{ url_for('buchungen.bearbeiten', bid=b.id, zurueck=url_for('vertraege.bearbeiten', vid=v.id)) }}" style="color:inherit"><span class="mono">{{ b.buchungsdatum|datum }}</span></a><div class="leise">{{ b.konto_name }}</div></td>
+      <td class="betrag">{{ b.betrag_cent|euro_vz }}</td>
+      <td style="width:1%">{% if darf_schreiben %}<form method="post">{{ csrf() }}<input type="hidden" name="bid" value="{{ b.id }}"><button class="btn klein" name="aktion" value="loesen" aria-label="Zuordnung entfernen" title="Zuordnung entfernen">✕</button></form>{% endif %}</td></tr>
+  {% else %}<tr><td class="leer">Noch keine Zahlungen zugeordnet.</td></tr>{% endfor %}</tbody></table>
+</section>
+{% endif %}
+</div>
+{% if v and darf_schreiben %}
+<form method="post" class="karte" data-frage="Vertrag löschen? Die Buchungen bleiben erhalten.">{{ csrf() }}<button class="btn gefahr" name="aktion" value="loeschen">Vertrag löschen</button></form>
+{% endif %}
+{% endblock %}

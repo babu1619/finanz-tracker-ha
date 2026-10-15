@@ -402,6 +402,9 @@ def screenshot_uebernehmen():
             (neuer, errechnet - neuer, lauf_id))
     zuordnung.ordne_zu(ids)
     umbuchungen.erkenne(ids)
+    from ..services import darlehen as dl, vertraege
+    vertraege.zuordnen(ids)
+    dl.zahlungen_zuordnen(ids)
     log_aenderung(g.user["id"], "importlauf", lauf_id, "screenshot", {"buchungen": len(ids)})
     commit()
     melde(f"{len(ids)} Umsätze übernommen." + (f" {fehler} Zeilen mit ungültigen Werten übersprungen." if fehler else ""))

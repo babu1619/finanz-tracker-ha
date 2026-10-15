@@ -1,6 +1,6 @@
 # Finanz-Tracker – Installation auf dem Home Assistant Green
 
-Version 0.5.0 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
+Version 0.6.0 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
 Die App ist eine eigenständige, verschlüsselte Webseite (https, Port 8099), die sich auf dem Handy als App installieren lässt;
 Home Assistant dient nur als Host.
 Alle Daten liegen lokal in der SQLite-Datenbank des Add-ons und sind Teil der Home-Assistant-Backups.
@@ -79,6 +79,20 @@ Startset an Kategorien angehakt lassen › „Einrichten“.
 
 Tipp für den Start: Die letzten 12 Monate importieren und einmal den Prüf-Modus durcharbeiten. Danach gibt es
 genug Regeln und Erfahrungswerte für eine weitgehend automatische Zuordnung.
+
+## Neu in 0.6.0 – kurz erklärt
+
+- **Abos & Verträge** (Menü „Mehr“): „Vertrag anlegen“ oder eine erkannte regelmäßige Zahlung als Abo, Fixkosten oder
+  Vertrag übernehmen. Laufzeit, Verlängerung und Kündigungsfrist eintragen – einen Monat vor Fristende erscheint oben
+  ein Hinweis, bis du „Ist gekündigt“ wählst oder die Frist vorbei ist.
+- **In der Buchung zuordnen:** Abschnitt „Abo, Fixkosten oder Vertrag · Darlehen“. „+ neu anlegen …“ erstellt den
+  Vertrag samt Rhythmus aus der Buchung; alle Zahlungen derselben Gegenpartei werden mit zugeordnet.
+- **Darlehen:** Mit hinterlegtem Zahlkonto ordnet das Tool die Raten automatisch zu; die Darlehensseite vergleicht
+  gezahlte Beträge mit dem Plan.
+- **Suche** auf den Seiten Kategorien und Regeln.
+- **Eigene Auswertungen:** Auswertung → „Eigene Auswertungen“ → „Diagramm hinzufügen“. Darstellung, Wert, Aufteilung,
+  Zeitachse, Zeitraum, Vorjahresvergleich und Kumulierung frei wählen, mit Vorschau. Mehrere Ansichten (z. B.
+  „Mobilität“, „Urlaub“) unter „Ansichten verwalten“.
 
 ## Neu in 0.5.0 – kurz erklärt
 

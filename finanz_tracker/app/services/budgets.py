@@ -44,15 +44,19 @@ def uebersicht(konten: list[int], monat: str, heute: date | None = None) -> dict
         reihen[pid] = statistik.reihe_je_kategorie(konten, von, monat, pid)
 
     laufend = monat == aktueller_monat()
-    vlist = vertraege_mod.erkenne(konten, heute) if laufend else []
+    # bestätigte Verträge plus erkannte regelmäßige Zahlungen
+    vlist = (vertraege_mod.liste(konten, heute) +
+             [dict(v, art=None, ausgeblieben=False) for v in vertraege_mod.erkenne(konten, heute)]) if laufend else []
     offen_fix = vertraege_mod.erwartet_im_monat(vlist, monat, heute) if laufend else []
-    fix_keys = {v["partner_key"] for v in vlist}
+    fix_keys = {v["partner_key"] for v in vlist if v.get("partner_key")} or {""}
+    vertrag_ids = {v["id"] for v in vlist if v.get("id")} or {0}
     fix_bezahlt = {}
-    if laufend and konten and fix_keys:
-        marks, kmarks = ",".join("?" * len(fix_keys)), ",".join("?" * len(konten))
+    if laufend and konten and vlist:
+        marks, vmarks, kmarks = ",".join("?" * len(fix_keys)), ",".join("?" * len(vertrag_ids)), ",".join("?" * len(konten))
         for r in q(f"""SELECT p.kategorie_id, -SUM(p.betrag_monat) AS s FROM posten_monat p JOIN buchung b ON b.id = p.buchung_id
-                       WHERE p.monat = ? AND p.konto_id IN ({kmarks}) AND b.partner_key IN ({marks}) AND p.ist_umbuchung = 0
-                       GROUP BY p.kategorie_id""", [monat] + list(konten) + list(fix_keys)):
+                       WHERE p.monat = ? AND p.konto_id IN ({kmarks}) AND p.ist_umbuchung = 0
+                         AND (b.partner_key IN ({marks}) OR b.vertrag_id IN ({vmarks}))
+                       GROUP BY p.kategorie_id""", [monat] + list(konten) + list(fix_keys) + list(vertrag_ids)):
             fix_bezahlt[r["kategorie_id"]] = r["s"]
     tage_monat = calendar.monthrange(int(monat[:4]), int(monat[5:]))[1]
     faktor = tage_monat / max(heute.day, 1) if laufend else 1

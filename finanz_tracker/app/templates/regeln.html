@@ -9,12 +9,14 @@
       <button class="btn" type="submit" name="auch_manuell" value="1" data-frage="Alle Regeln auch auf manuell zugeordnete Buchungen anwenden? Deine manuellen Zuordnungen werden dort überschrieben, wo eine Regel passt.">… auch auf manuell zugeordnete</button></form>
     <a class="btn primaer" href="{{ url_for('regeln.neu') }}">Regel anlegen</a></div>{% endif %}
 </div>
-<section class="karte ohne-rand">
+<section class="karte ohne-rand" id="regelliste">
+  <div class="suchzeile" style="padding:14px 16px 0"><input type="search" class="suchfeld" data-suche="zeilen" data-ziel="#regelliste" placeholder="Regeln durchsuchen – Name, Bedingung oder Kategorie" aria-label="Regeln durchsuchen" autocomplete="off">
+    <span class="leise klein" data-suche-info></span></div>
   <div class="scroll"><table class="tab" style="min-width:760px">
     <thead><tr><th>Prio</th><th>Wenn</th><th>Dann</th><th style="text-align:right">Treffer 12 Mon.</th><th>Zuletzt</th><th></th></tr></thead>
     <tbody>
     {% for x in rows %}
-      <tr style="{{ 'opacity:.55' if not x.r.aktiv }}">
+      <tr style="{{ 'opacity:.55' if not x.r.aktiv }}" data-text="{{ (x.r.name ~ ' ' ~ x.wenn ~ ' ' ~ x.dann)|lower }}">
         <td style="white-space:nowrap">
           {% if darf_schreiben %}
           <form method="post" action="{{ url_for('regeln.verschieben', rid=x.r.id) }}" style="display:inline-flex;gap:2px">{{ csrf() }}
@@ -30,6 +32,7 @@
     {% else %}
       <tr><td colspan="6" class="leer">Noch keine Regeln. Am schnellsten entstehen sie im Prüf-Modus per Häkchen.</td></tr>
     {% endfor %}
+    <tr data-suche-leer hidden><td colspan="6" class="leer">Keine Regel gefunden.</td></tr>
     </tbody></table></div>
 </section>
 

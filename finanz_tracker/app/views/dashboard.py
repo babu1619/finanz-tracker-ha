@@ -67,7 +67,7 @@ def index():
     spar = sparkennzahlen(konten, sichtbar, monat)
     ziele = [e for e in ruecklagen.uebersicht(konten)["liste"] if e["r"]["ziel_cent"] and e["r"]["aktiv"]][:4]
     commit()
-    vt_hinweise = [v for v in vertraege.erkenne(konten) if v["art"] in ("fix", "abo") and (v["aenderung"] or v["ausgeblieben"])]
+    vt_hinweise = [v for v in vertraege.liste(konten) if v["aenderung"] or v["ausgeblieben"]]
     max_kat = max([k["betrag"] for k in kat] + [1])
     return render_template(
         "dashboard.html", monat=monat, vor=monat_plus(monat, -1), nach=monat_plus(monat, 1),

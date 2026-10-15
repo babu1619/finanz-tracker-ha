@@ -32,7 +32,7 @@ def posten(konten: list[int], von: str, bis: str | None = None, person_id=None) 
                       CASE WHEN n.i = 0 THEN p.betrag_cent - (p.betrag_cent / p.verteilung_monate) * (p.verteilung_monate - 1)
                            ELSE p.betrag_cent / p.verteilung_monate END AS betrag
                       FROM p JOIN n ON n.i < p.verteilung_monate)
-               SELECT monat, betrag, kategorie_id, person_id, buchung_id FROM pm WHERE monat BETWEEN ? AND ?""")
+               SELECT monat, betrag, kategorie_id, person_id, buchung_id, konto_id FROM pm WHERE monat BETWEEN ? AND ?""")
     params = list(konten) + [monat_plus(von, -59), bis] + ([person_id] if person_id else []) + [von, bis]
     return q(sql, params)
 
