@@ -196,14 +196,68 @@ def alle(konten: list[int]) -> list:
                  WHERE d.konto_id IN ({marks}) ORDER BY k.aktiv DESC, k.sortierung, k.name""", konten)
 
 
-def vergleich(darlehen: list, betrag_cent: int, monat: str) -> list[dict]:
-    """Gleiche Sondertilgung in jedes Darlehen: Wo spart sie am meisten (bis Zinsbindungsende)?"""
-    erg = []
+def vergleich(darlehen: list, betrag_cent: int, monat: str) -> dict:
+    """Wohin mit einer Sondertilgung? Vergleicht die Darlehen fair und hält den Sondertilgungsrahmen ein.
+
+    * Jedes Darlehen wird nur mit dem Betrag simuliert, der im Kalenderjahr noch möglich ist (freier Rahmen) und
+      höchstens mit seiner Restschuld.
+    * Verglichen wird die Zinsersparnis bis zu einem gemeinsamen Stichtag – dem frühesten Ende einer Zinsbindung
+      nach dem Sondertilgungsmonat. Bis dahin sind alle Zinsen vertraglich fest; danach hängt alles von
+      Annahmen ab. (Ein Vergleich „bis zur jeweils eigenen Zinsbindung“ würde Darlehen mit langer Zinsbindung
+      bevorzugen, nur weil der Zeitraum länger ist.)
+    * Zusätzlich eine Empfehlung, wie sich der Betrag auf die Darlehen verteilen lässt, wenn ein Rahmen nicht
+      reicht: zuerst das Darlehen mit dem höchsten Zins, dann das nächste.
+    """
+    jahr = int(monat[:4])
+    zb_termine = sorted(d["zinsbindung_bis"] for d in darlehen if d["zinsbindung_bis"] and d["zinsbindung_bis"] >= monat)
+    stichtag = zb_termine[0] if zb_termine else None
+    zeilen = []
     for d in darlehen:
-        s = simuliere(d, betrag_cent, monat)
-        erg.append({"d": d, "s": s})
-    erg.sort(key=lambda e: -(e["s"].get("ersparnis_zb") if e["s"].get("ersparnis_zb") is not None else e["s"]["ersparnis"]))
-    return erg
+        ereig = ereignisse(d["konto_id"])
+        basis = plan(d, ereig)
+        rest = restschuld(basis, monat_plus(monat, -1), d)
+        rahmen = sonder_rahmen(d, jahr, ereig)
+        moeglich = min(betrag_cent, rest)
+        if rahmen["frei"] is not None:
+            moeglich = min(moeglich, rahmen["frei"])
+        z = {"d": d, "rahmen": rahmen, "rest": rest, "moeglich": max(0, moeglich),
+             "gekappt": moeglich < betrag_cent}
+        if z["moeglich"] > 0:
+            s = simuliere(d, z["moeglich"], monat)
+            z["s"] = s
+            if stichtag:
+                mit = plan(d, ereig, {monat: z["moeglich"]})
+                z["ersparnis_stichtag"] = summiere(basis, monat, stichtag)["zins"] - summiere(mit, monat, stichtag)["zins"]
+            else:
+                z["ersparnis_stichtag"] = s["ersparnis"]
+            # Ersparnis je 1.000 € eingesetzt – macht Darlehen mit unterschiedlich freiem Rahmen vergleichbar
+            z["je_1000"] = z["ersparnis_stichtag"] * 100000 / z["moeglich"]
+        else:
+            z["s"] = None
+            z["ersparnis_stichtag"] = 0
+            z["je_1000"] = 0
+        zeilen.append(z)
+    zeilen.sort(key=lambda z: (-z["je_1000"], -z["d"]["sollzins"]))
+
+    # Empfehlung: Betrag nach Zinshöhe auf die freien Rahmen verteilen
+    offen = betrag_cent
+    aufteilung = []
+    for z in sorted(zeilen, key=lambda z: (-z["d"]["sollzins"], -z["je_1000"])):
+        if offen <= 0 or z["moeglich"] <= 0:
+            continue
+        teil = min(offen, z["moeglich"])
+        ereig = ereignisse(z["d"]["konto_id"])
+        basis = plan(z["d"], ereig)
+        mit = plan(z["d"], ereig, {monat: teil})
+        bis = stichtag or (basis[-1]["monat"] if basis else monat)
+        aufteilung.append({"d": z["d"], "betrag": teil,
+                           "ersparnis": summiere(basis, monat, bis)["zins"] - summiere(mit, monat, bis)["zins"],
+                           "ersparnis_gesamt": sum(x["zins"] for x in basis if x["monat"] >= monat)
+                           - sum(x["zins"] for x in mit if x["monat"] >= monat)})
+        offen -= teil
+    return {"zeilen": zeilen, "stichtag": stichtag, "monat": monat, "betrag": betrag_cent,
+            "aufteilung": aufteilung, "nicht_moeglich": max(0, offen),
+            "summe_ersparnis": sum(a["ersparnis"] for a in aufteilung)}
 
 
 def tilgung_im_zeitraum(konten: list[int], von: str, bis: str) -> int:
@@ -331,14 +385,54 @@ def simuliere_anschluss(d, zins: float, rate_cent: int) -> dict:
     return erg
 
 
-def restschuld_zu_zinsbindungsenden(darlehen: list) -> list[dict]:
-    """Kumulierte Restschuld aller Darlehen zu jedem Zinsbindungsende (sortiert)."""
-    plaene = {d["konto_id"]: plan(d) for d in darlehen}
+def restschuld_zu_zinsbindungsenden(darlehen: list, anschluss: dict | None = None,
+                                    bauspar_guthaben=None) -> list[dict]:
+    """Kumulierte Restschuld aller Darlehen zu jedem Zinsbindungsende (sortiert).
+
+    anschluss: {zinsbindungsende "YYYY-MM": {"zins": %, "rate": cent}} – simulierte Anschlussfinanzierung für die
+    Summe, die zu diesem Termin neu zu finanzieren ist. Die Rate wird auf die betroffenen Darlehen im Verhältnis
+    ihrer Restschuld verteilt; spätere Zeilen rechnen mit dem Ergebnis weiter.
+    bauspar_guthaben: Funktion monat -> Bausparguthaben (Summe) zu diesem Zeitpunkt, für die Netto-Spalte.
+    """
+    anschluss = anschluss or {}
     termine = sorted({d["zinsbindung_bis"] for d in darlehen if d["zinsbindung_bis"]})
+    # Restschuld zum eigenen Zinsbindungsende ist von der Anschlussannahme unabhängig
+    rest_zb = {d["konto_id"]: restschuld(plan(d, anschluss="keine"), d["zinsbindung_bis"], d)
+               for d in darlehen if d["zinsbindung_bis"]}
+    eigene: dict = {}
+    for t in termine:
+        sim = anschluss.get(t)
+        if not sim:
+            continue
+        betroffen = [d for d in darlehen if d["zinsbindung_bis"] == t]
+        summe = sum(rest_zb[d["konto_id"]] for d in betroffen) or 1
+        for d in betroffen:
+            eigene[d["konto_id"]] = {"zins": sim["zins"], "rate": round(sim["rate"] * rest_zb[d["konto_id"]] / summe)}
+    plaene = {d["konto_id"]: plan(d, anschluss=eigene.get(d["konto_id"], "gespeichert")) for d in darlehen}
     erg = []
     for t in termine:
         je = [{"d": d, "rest": restschuld(plaene[d["konto_id"]], t, d), "endet": d["zinsbindung_bis"] == t}
               for d in darlehen]
-        erg.append({"monat": t, "je": je, "summe": sum(x["rest"] for x in je),
-                    "faellig": sum(x["rest"] for x in je if x["endet"])})
+        zeile = {"monat": t, "je": je, "summe": sum(x["rest"] for x in je),
+                 "faellig": sum(x["rest"] for x in je if x["endet"]), "sim": None}
+        if bauspar_guthaben:
+            zeile["bauspar"] = bauspar_guthaben(t)
+            zeile["netto"] = zeile["summe"] - zeile["bauspar"]
+        sim = anschluss.get(t)
+        if sim:
+            betroffen = [x["d"] for x in je if x["endet"]]
+            danach = [z for d in betroffen for z in plaene[d["konto_id"]] if z["monat"] > t]
+            ende = max((plaene[d["konto_id"]][-1]["monat"] for d in betroffen if plaene[d["konto_id"]]), default=None)
+            mindest = round(zeile["faellig"] * sim["zins"] / 100 / 12) + 1
+            fehler = sim["rate"] < mindest
+            j1, m1 = (int(x) for x in t.split("-"))
+            monate = None
+            if ende and not fehler:
+                j2, m2 = (int(x) for x in ende.split("-"))
+                monate = (j2 - j1) * 12 + (m2 - m1)
+            zeile["sim"] = {**sim, "ende": None if fehler else ende, "monate": monate,
+                            "zinsen": sum(z["zins"] for z in danach), "mindestrate": mindest, "fehler": fehler,
+                            "tilgung": ((sim["rate"] * 12 - zeile["faellig"] * sim["zins"] / 100) / zeile["faellig"] * 100)
+                            if zeile["faellig"] else None}
+        erg.append(zeile)
     return erg

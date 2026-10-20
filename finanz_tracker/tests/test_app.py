@@ -227,6 +227,8 @@ class Ablauf(unittest.TestCase):
         self._v050(db)
         self._v060(db)
         self._v070(db)
+        self._v071(db)
+        self._v072(db)
 
         # 11. Import rückgängig
         lauf = db.execute("SELECT id FROM importlauf WHERE anzahl_neu = 2 ORDER BY id").fetchone()["id"]
@@ -1131,6 +1133,59 @@ class Ablauf(unittest.TestCase):
         zahl = lambda t: int(t.replace(".", "").replace("€", "").replace("\u202f", "").replace("−", "-").strip())  # noqa: E731
         self.assertEqual(zahl(verm_mit) - zahl(verm_ohne), 31000)
         self.assertNotIn(str(kid), [o for o in re.findall(r'name="konto_id".*?</select>', self.get("/erfassen/"), re.S)[0].split('value="')[1:]])
+        db.execute("DELETE FROM konto WHERE id = ?", (kid,))
+        db.commit()
+
+    def _v071(self, db):
+        """0.7.1: Restschuld abzüglich Bausparguthaben, Anschluss-Simulation in der Zinsbindungs-Tabelle."""
+        from app.services import darlehen as dl
+        html = self.get("/darlehen/")
+        self.assertIn("Restschuld abzüglich Bausparguthaben", html)
+        self.assertIn("− Bausparguthaben", html)
+        self.assertIn('name="zins_2030-12"', html)
+        html = self.get("/darlehen/?zins_2030-12=3,8&rate_2030-12=1.500")
+        self.assertIn("schuldenfrei <b>", html)
+        with self.app.app_context():
+            d = dl.lade(3)
+            sim = dl.simuliere_anschluss(d, 3.8, 150000)
+            t = dl.restschuld_zu_zinsbindungsenden([d], {"2030-12": {"zins": 3.8, "rate": 150000}})[0]
+        self.assertEqual((t["sim"]["ende"], t["sim"]["zinsen"]), (sim["ende_neu"], sim["zinsen_neu"]))
+        html = self.get("/darlehen/?zins_2030-12=3,8&rate_2030-12=100")
+        self.assertIn("Rate zu niedrig", html)
+        self.post("/darlehen/anschluss-uebernehmen", {"zins_2030-12": "3,8", "rate_2030-12": "1.500"}, von="/darlehen/")
+        r = db.execute("SELECT anschluss_sollzins, anschluss_rate_cent FROM darlehen WHERE konto_id = 3").fetchone()
+        self.assertEqual(tuple(r), (3.8, 150000))
+        db.execute("UPDATE darlehen SET anschluss_sollzins = NULL, anschluss_rate_cent = NULL WHERE konto_id = 3")
+        db.commit()
+
+    def _v072(self, db):
+        """0.7.2: Sondertilgungs-Vergleich hält den Rahmen ein und vergleicht bis zu einem gemeinsamen Stichtag."""
+        from app.services import darlehen as dl
+        kid = db.execute("INSERT INTO konto (name, typ, startsaldo_cent) VALUES ('Darlehen B', 'darlehen', -10000000)").lastrowid
+        db.execute("INSERT INTO darlehen (konto_id, ursprung_cent, sollzins, rate_cent, erste_rate, zinsbindung_bis, "
+                   "sondertilgung_max_cent) VALUES (?, 10000000, 3.0, 60000, '2022-01', '2028-06', 500000)", (kid,))
+        db.execute("INSERT INTO darlehen_ereignis (konto_id, datum, art, betrag_cent) VALUES (?, '2026-03-01', 'sondertilgung', 200000)",
+                   (kid,))
+        db.commit()
+        with self.app.app_context():
+            v = dl.vergleich([dl.lade(3), dl.lade(kid)], 2000000, "2026-11")
+        self.assertEqual(v["stichtag"], "2028-06")
+        b = next(z for z in v["zeilen"] if z["d"]["konto_id"] == kid)
+        a = next(z for z in v["zeilen"] if z["d"]["konto_id"] == 3)
+        self.assertEqual((b["moeglich"], b["gekappt"]), (300000, True))  # 5.000 € Rahmen, 2.000 € schon genutzt
+        self.assertEqual(a["moeglich"], 1200000)                         # 12.000 € Rahmen
+        self.assertEqual(v["zeilen"][0]["d"]["konto_id"], kid)           # höherer Zins gewinnt je 1.000 €
+        self.assertGreater(b["je_1000"], a["je_1000"])
+        # 1.000 € zu 3 % über rund 19 Monate sparen etwa 47 € Zinsen
+        self.assertTrue(4000 < b["je_1000"] < 5500, b["je_1000"])
+        self.assertEqual([(x["d"]["konto_id"], x["betrag"]) for x in v["aufteilung"]], [(kid, 300000), (3, 1200000)])
+        self.assertEqual(v["nicht_moeglich"], 500000)
+        html = self.get("/darlehen/?vergleich_betrag=20.000&vergleich_monat=2026-11")
+        self.assertIn("Empfehlung für 20.000 €", html)
+        self.assertIn("nicht möglich", html)
+        self.assertIn("begrenzt", html)
+        db.execute("DELETE FROM darlehen_ereignis WHERE konto_id = ?", (kid,))
+        db.execute("DELETE FROM darlehen WHERE konto_id = ?", (kid,))
         db.execute("DELETE FROM konto WHERE id = ?", (kid,))
         db.commit()
 

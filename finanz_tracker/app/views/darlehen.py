@@ -46,10 +46,12 @@ def index():
             verlauf.append({"jahr": j, "rest": sum(dl.restschuld(k["plan"], m, k["d"]) for k in karten)})
     vergleich = None
     betrag = request.args.get("vergleich_betrag")
-    if betrag and len(darlehen) > 1:
+    vergleich_monat = request.args.get("vergleich_monat") if ist_monat(request.args.get("vergleich_monat", "")) \
+        else aktueller_monat()
+    if betrag and len([d for d in darlehen if d["aktiv"]]) > 1:
         try:
             cent = abs(parse_euro_eingabe(betrag))
-            vergleich = dl.vergleich([d for d in darlehen if d["aktiv"]], cent, aktueller_monat()) if cent else None
+            vergleich = dl.vergleich([d for d in darlehen if d["aktiv"]], cent, vergleich_monat) if cent else None
         except ValueError:
             melde("Ungültiger Betrag.", "warn")
     bauspar = [bs.kennzahlen(v) for v in bs.alle()]
@@ -57,11 +59,52 @@ def index():
              "bausparen": [(b["v"]["name"], bs.aktuelle_rate(b["v"])) for b in bauspar if b["v"]["aktiv"] and bs.aktuelle_rate(b["v"])]}
     raten["summe_darlehen"] = sum(r for _, r in raten["darlehen"])
     raten["summe_bausparen"] = sum(r for _, r in raten["bausparen"])
-    zb_termine = dl.restschuld_zu_zinsbindungsenden([d for d in darlehen if d["aktiv"]])
-    return render_template("darlehen.html", bauspar=bauspar, raten=raten, zb_termine=zb_termine,
+    aktive = [d for d in darlehen if d["aktiv"]]
+    zb_sim = _zb_simulation(request.args, aktive)
+    aktive_bs = [v for v in bs.alle(nur_aktive=True)]
+    zb_termine = dl.restschuld_zu_zinsbindungsenden(
+        aktive, zb_sim, (lambda m: sum(bs.guthaben_im(v, m) for v in aktive_bs)) if aktive_bs else None)
+    return render_template("darlehen.html", bauspar=bauspar, raten=raten, zb_termine=zb_termine, zb_sim=zb_sim,
                            bauspar_guthaben=sum(b["guthaben"] for b in bauspar if b["v"]["aktiv"]), karten=karten, ohne=ohne, gesamt=gesamt, immobilien=for_imm,
                            verlauf=verlauf, max_verlauf=max([v["rest"] for v in verlauf] + [1]), heute_jahr=date.today().year,
-                           vergleich=vergleich, vergleich_betrag=betrag or "")
+                           vergleich=vergleich, vergleich_betrag=betrag or "",
+                           vergleich_monat=vergleich_monat)
+
+
+def _zb_simulation(args, darlehen) -> dict:
+    """Simulierte Anschlussfinanzierung je Zinsbindungsende aus der Tabelle (zins_YYYY-MM, rate_YYYY-MM)."""
+    sim = {}
+    for t in {d["zinsbindung_bis"] for d in darlehen if d["zinsbindung_bis"]}:
+        z, r = args.get(f"zins_{t}", "").strip(), args.get(f"rate_{t}", "").strip()
+        if not (z and r):
+            continue
+        try:
+            sim[t] = {"zins": float(z.replace(",", ".")), "rate": abs(parse_euro_eingabe(r))}
+        except ValueError:
+            melde(f"Zins oder Rate für {t} prüfen.", "warn")
+    return sim
+
+
+@bp.route("/anschluss-uebernehmen", methods=["POST"])
+@auth.schreibrecht
+def anschluss_alle():
+    """Simulation aus der Zinsbindungs-Tabelle als Planannahme für alle betroffenen Darlehen übernehmen."""
+    darlehen = [d for d in dl.alle(_konten()) if d["aktiv"]]
+    sim = _zb_simulation(request.form, darlehen)
+    n = 0
+    for t, s in sim.items():
+        betroffen = [d for d in darlehen if d["zinsbindung_bis"] == t]
+        rest = {d["konto_id"]: dl.restschuld(dl.plan(d, anschluss="keine"), t, d) for d in betroffen}
+        summe = sum(rest.values()) or 1
+        for d in betroffen:
+            exe("UPDATE darlehen SET anschluss_sollzins = ?, anschluss_rate_cent = ? WHERE konto_id = ?",
+                (s["zins"], round(s["rate"] * rest[d["konto_id"]] / summe), d["konto_id"]))
+            n += 1
+    log_aenderung(g.user["id"], "darlehen", None, "anschluss_alle", dict(request.form))
+    commit()
+    melde(f"Anschlussfinanzierung für {n} Darlehen als Planannahme übernommen." if n else "Keine Werte zum Übernehmen.",
+          "ok" if n else "warn")
+    return redirect(url_for("darlehen.index"))
 
 
 @bp.route("/<int:kid>")

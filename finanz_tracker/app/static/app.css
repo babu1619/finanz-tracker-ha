@@ -407,3 +407,5 @@ tr.summe td { border-top: 2px solid #C9D1CD; }
   header.top nav a { padding: 9px 8px; font-size: 14.5px; }
   header.top .wer { gap: 8px; }
 }
+.zb-tab td.eingabe, .zb-tab th.eingabe { background: #F6F8F7; text-align: right; }
+.zb-tab td.eingabe input { width: 96px; min-height: 34px; text-align: right; font-family: var(--mono, monospace); }

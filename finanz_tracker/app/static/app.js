@@ -4,6 +4,10 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("form[data-frage]").forEach((f) => {
     f.addEventListener("submit", (e) => { if (!window.confirm(f.dataset.frage)) e.preventDefault(); });
   });
+  // CSRF-Token nur beim Absenden per POST mitschicken (nicht in GET-Adressen)
+  document.querySelectorAll("button[data-csrf-an]").forEach((b) => {
+    b.addEventListener("click", () => { const f = document.getElementById(b.dataset.csrfAn); if (f) f.disabled = false; });
+  });
   document.querySelectorAll("button[data-frage]").forEach((b) => {
     b.addEventListener("click", (e) => { if (!window.confirm(b.dataset.frage)) e.preventDefault(); });
   });

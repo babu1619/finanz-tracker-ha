@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.7.1 – Oktober 2026
+
+- Darlehen: Restschuld gesamt abzüglich des angesparten Bausparguthabens (Restschuld, − Bausparguthaben, Netto); in der Tabelle der Zinsbindungsenden zusätzlich Bausparguthaben und Netto je Termin
+- Darlehen: Anschlussfinanzierung direkt in der Tabelle der Zinsbindungsenden simulieren – je Termin zwei editierbare Spalten für Sollzins und Monatsrate, Ergebnis mit Schuldenfrei-Termin, Zinsen und anfänglicher Tilgung; spätere Termine rechnen mit dem Ergebnis weiter; „Als Planannahme übernehmen“ speichert die Werte für die betroffenen Darlehen
+- Darlehen, „Wohin mit einer Sondertilgung?“ korrigiert: Jedes Darlehen wird nur mit dem im Jahr noch freien Sondertilgungsrahmen (abzüglich bereits geleisteter Sondertilgungen) und höchstens der Restschuld gerechnet; verglichen wird fair bis zum frühesten Ende einer Zinsbindung (vorher bevorzugte der Vergleich Darlehen mit langer Zinsbindung), dazu Ersparnis je 1.000 €, wählbarer Monat und eine Empfehlung zur Aufteilung des Betrags inklusive des Teils, der im Jahr nicht mehr sondergetilgt werden kann
+
 ## 0.7.0 – Oktober 2026
 
 - Prüf-Modus: Notizfeld in der Einzelansicht und in der Tabelle

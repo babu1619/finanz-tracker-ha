@@ -8,8 +8,13 @@
 
 {% if karten %}
 <div class="kpis">
-  <div class="kpi"><div class="label">Restschuld gesamt</div><div class="wert">{{ gesamt.rest|euro_rund }}</div>
-    <div class="unter">von {{ gesamt.ursprung|euro_rund }} · {{ ((1 - gesamt.rest / gesamt.ursprung) * 100)|round|int if gesamt.ursprung else 0 }} % getilgt</div></div>
+  <div class="kpi"><div class="label">Restschuld{{ ' abzüglich Bausparguthaben' if bauspar_guthaben }}</div><div class="wert">{{ (gesamt.rest - bauspar_guthaben)|euro_rund }}</div>
+    {% if bauspar_guthaben %}<div class="ratenliste">
+      <div><span>Restschuld Darlehen</span><b>{{ gesamt.rest|euro_rund }}</b></div>
+      <div><span>− Bausparguthaben</span><b>{{ bauspar_guthaben|euro_rund }}</b></div>
+      <div class="gesamt"><span>Netto</span><b>{{ (gesamt.rest - bauspar_guthaben)|euro_rund }}</b></div></div>
+    <div class="unter">von {{ gesamt.ursprung|euro_rund }} · {{ ((1 - gesamt.rest / gesamt.ursprung) * 100)|round|int if gesamt.ursprung else 0 }} % getilgt</div>
+    {% else %}<div class="unter">von {{ gesamt.ursprung|euro_rund }} · {{ ((1 - gesamt.rest / gesamt.ursprung) * 100)|round|int if gesamt.ursprung else 0 }} % getilgt</div>{% endif %}</div>
   <div class="kpi"><div class="label">Monatsrate{{ ' inkl. Bausparen' if raten.bausparen }}</div><div class="wert">{{ (raten.summe_darlehen + raten.summe_bausparen)|euro_rund }}</div>
     <div class="ratenliste">
       <div><span>Darlehen</span><b>{{ raten.summe_darlehen|euro_rund }}</b></div>
@@ -53,16 +58,34 @@
 </section>
 {% endif %}
 
-{% if zb_termine %}
+{% if zb_termine %}{% set mit_bs = zb_termine[0].bauspar is defined %}
 <section class="karte">
   <div class="kopf"><h2 style="margin:0">Restschuld zu den Zinsbindungsenden</h2><span class="rechts leise">laut Plan, alle Darlehen</span></div>
-  <div class="scroll"><table class="tab vergleich" style="margin-top:8px">
-    <thead><tr><th style="padding-left:0">Zinsbindung endet</th>{% for x in zb_termine[0].je %}<th style="text-align:right">{{ x.d.name }}</th>{% endfor %}<th style="text-align:right">Restschuld gesamt</th><th style="text-align:right">davon neu zu finanzieren</th></tr></thead>
+  <form method="get" id="zb-form">
+  <div class="scroll"><table class="tab vergleich zb-tab" style="margin-top:8px">
+    <thead><tr><th style="padding-left:0">Zinsbindung endet</th>{% for x in zb_termine[0].je %}<th style="text-align:right">{{ x.d.name }}</th>{% endfor %}
+      <th style="text-align:right">Restschuld gesamt</th>{% if mit_bs %}<th style="text-align:right">Bausparguthaben</th><th style="text-align:right">Netto</th>{% endif %}
+      <th style="text-align:right">neu zu finanzieren</th><th class="eingabe">Sollzins %</th><th class="eingabe">Monatsrate</th><th>Ergebnis</th></tr></thead>
     <tbody>{% for t in zb_termine %}<tr>
       <td style="padding-left:0"><b>{{ t.monat|monat }}</b></td>
       {% for x in t.je %}<td class="betrag {{ 'best' if x.endet }}">{{ x.rest|euro_rund }}{% if x.endet %} <span class="tag warn">endet</span>{% endif %}</td>{% endfor %}
-      <td class="betrag"><b>{{ t.summe|euro_rund }}</b></td><td class="betrag">{{ t.faellig|euro_rund }}</td></tr>{% endfor %}</tbody></table></div>
-  <p class="leise" style="margin-bottom:0">Nach dem Ende einer Zinsbindung rechnet der Plan mit derselben Rate und demselben Zins weiter – oder mit der Anschlussfinanzierung, die du auf der Seite des Darlehens simuliert und übernommen hast.</p>
+      <td class="betrag"><b>{{ t.summe|euro_rund }}</b></td>
+      {% if mit_bs %}<td class="betrag">{{ t.bauspar|euro_rund }}</td><td class="betrag"><b>{{ t.netto|euro_rund }}</b></td>{% endif %}
+      <td class="betrag">{{ t.faellig|euro_rund }}</td>
+      <td class="eingabe"><input type="text" name="zins_{{ t.monat }}" inputmode="decimal" value="{{ request.args.get('zins_' ~ t.monat, '') }}" placeholder="z. B. 3,6" aria-label="Sollzins der Anschlussfinanzierung {{ t.monat|monat }}"></td>
+      <td class="eingabe"><input type="text" name="rate_{{ t.monat }}" inputmode="decimal" value="{{ request.args.get('rate_' ~ t.monat, '') }}" placeholder="z. B. 1.100" aria-label="Monatsrate der Anschlussfinanzierung {{ t.monat|monat }}"></td>
+      <td class="klein">{% if t.sim %}{% if t.sim.fehler %}<span class="tag bad">Rate zu niedrig</span> mind. {{ t.sim.mindestrate|euro_rund }}
+        {% else %}schuldenfrei <b>{{ t.sim.ende|monat_kurz }}</b>{% if t.sim.monate is not none %} ({{ t.sim.monate // 12 }} J. {{ t.sim.monate % 12 }} M.){% endif %}<br><span class="leise">Zinsen {{ t.sim.zinsen|euro_rund }}{% if t.sim.tilgung is not none %} · Tilgung {{ ('%.1f'|format(t.sim.tilgung)).replace('.', ',') }} %{% endif %}</span>{% endif %}
+        {% else %}<span class="leise">{% if t.je|selectattr('endet')|map(attribute='d')|selectattr('anschluss_sollzins')|list %}Planannahme hinterlegt{% else %}gleicher Zins und Rate{% endif %}</span>{% endif %}</td>
+    </tr>{% endfor %}</tbody></table></div>
+  <div class="formreihe" style="margin-top:10px;align-items:center">
+    <button class="btn primaer" type="submit">Berechnen</button>
+    {% if zb_sim %}<a class="btn" href="{{ url_for('darlehen.index') }}">Zurücksetzen</a>
+      {% if darf_schreiben %}<button class="btn" type="submit" formmethod="post" formaction="{{ url_for('darlehen.anschluss_alle') }}" data-csrf-an="zb-csrf">Als Planannahme übernehmen</button>{% endif %}{% endif %}
+    <span class="leise klein" style="flex:1 1 280px">Zinssatz und Monatsrate gelten für die Summe, die zu diesem Termin neu zu finanzieren ist; enden mehrere Darlehen gleichzeitig, wird die Rate im Verhältnis ihrer Restschuld aufgeteilt. Spätere Zeilen rechnen mit dem Ergebnis weiter. Das Bausparguthaben ist nur zum Vergleich ausgewiesen und wird nicht verrechnet.</span>
+  </div>
+  {% if darf_schreiben %}<input type="hidden" name="csrf" id="zb-csrf" value="{{ csrf_token }}" disabled>{% endif %}
+  </form>
 </section>
 {% endif %}
 
@@ -98,19 +121,31 @@
   <h2>Wohin mit einer Sondertilgung?</h2>
   <form method="get" class="formreihe">
     <label class="feld" style="flex:0 1 220px">Betrag<input type="text" name="vergleich_betrag" inputmode="decimal" value="{{ vergleich_betrag }}" placeholder="z. B. 10.000"></label>
+    <label class="feld" style="flex:0 1 180px">Im Monat<input type="month" name="vergleich_monat" value="{{ vergleich_monat }}" style="min-height:40px"></label>
     <button class="btn primaer" type="submit">Vergleichen</button>
   </form>
-  {% if vergleich %}
+  {% if vergleich %}{% set v0 = vergleich %}
   <div class="scroll" style="margin-top:12px"><table class="tab vergleich">
-    <thead><tr><th style="padding-left:0">Darlehen</th><th style="text-align:right">Zins</th><th style="text-align:right">Ersparnis bis Zinsbindung</th><th style="text-align:right">Ersparnis gesamt</th><th style="text-align:right">Laufzeit kürzer</th><th>Rahmen {{ heute_jahr }}</th></tr></thead>
-    <tbody>{% for v in vergleich %}<tr>
-      <td class="{{ 'best' if loop.first }}" style="padding-left:0"><b>{{ v.d.name }}</b>{% if loop.first %} <span class="tag ok">beste Wahl</span>{% endif %}</td>
-      <td class="betrag {{ 'best' if loop.first }}">{{ ('%.2f'|format(v.d.sollzins)).replace('.', ',') }} %</td>
-      <td class="betrag {{ 'best' if loop.first }}">{{ v.s.ersparnis_zb|euro_rund if v.s.ersparnis_zb is not none else '–' }}</td>
-      <td class="betrag {{ 'best' if loop.first }}">{{ v.s.ersparnis|euro_rund }}</td>
-      <td class="betrag {{ 'best' if loop.first }}">{{ v.s.verkuerzung_monate }} Monate</td>
-      <td class="{{ 'best' if loop.first }}">{% if v.s.ueber_rahmen %}<span class="tag bad">über Rahmen</span>{% elif v.s.rahmen.frei is not none %}frei {{ v.s.rahmen.frei|euro_rund }}{% else %}<span class="leise">nicht hinterlegt</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
-  <p class="leise" style="margin-bottom:0">Maßgeblich ist meist die Ersparnis bis zum Ende der Zinsbindung, weil der Zins danach neu verhandelt wird. Die Sondertilgung „verzinst“ sich risikofrei mit dem Sollzins des Darlehens.</p>
+    <thead><tr><th style="padding-left:0">Darlehen</th><th style="text-align:right">Zins</th><th style="text-align:right">Rahmen frei {{ v0.monat[:4] }}</th><th style="text-align:right">möglich</th>
+      <th style="text-align:right">Ersparnis bis {{ v0.stichtag|monat_kurz if v0.stichtag else 'Laufzeitende' }}</th><th style="text-align:right">je 1.000 €</th><th style="text-align:right">Ersparnis bis eigene Zinsbindung</th><th style="text-align:right">Laufzeit kürzer</th></tr></thead>
+    <tbody>{% for z in v0.zeilen %}{% set best = loop.first and z.moeglich > 0 %}<tr style="{{ 'opacity:.55' if not z.moeglich }}">
+      <td class="{{ 'best' if best }}" style="padding-left:0"><b>{{ z.d.name }}</b>{% if best %} <span class="tag ok">beste Wahl</span>{% endif %}</td>
+      <td class="betrag {{ 'best' if best }}">{{ ('%.2f'|format(z.d.sollzins)).replace('.', ',') }} %</td>
+      <td class="betrag">{% if z.rahmen.frei is not none %}{{ z.rahmen.frei|euro_rund }}{% else %}<span class="leise">kein Limit hinterlegt</span>{% endif %}</td>
+      <td class="betrag">{{ z.moeglich|euro_rund }}{% if z.gekappt %} <span class="tag warn">begrenzt</span>{% endif %}</td>
+      <td class="betrag {{ 'best' if best }}">{{ z.ersparnis_stichtag|euro_rund if z.moeglich else '–' }}</td>
+      <td class="betrag">{{ z.je_1000|euro_rund if z.moeglich else '–' }}</td>
+      <td class="betrag">{{ z.s.ersparnis_zb|euro_rund if z.s and z.s.ersparnis_zb is not none else '–' }}</td>
+      <td class="betrag">{{ z.s.verkuerzung_monate ~ ' Monate' if z.s else '–' }}</td></tr>{% endfor %}</tbody></table></div>
+  {% if v0.aufteilung %}
+  <h3 style="margin:16px 0 6px;font-size:15px">Empfehlung für {{ v0.betrag|euro_rund }}</h3>
+  <div class="scroll"><table class="tab vergleich">
+    <tbody>{% for a in v0.aufteilung %}<tr><td style="padding-left:0">{{ a.d.name }} <span class="leise">({{ ('%.2f'|format(a.d.sollzins)).replace('.', ',') }} %)</span></td><td class="betrag"><b>{{ a.betrag|euro_rund }}</b></td>
+      <td class="leise" style="text-align:right">spart {{ a.ersparnis|euro_rund }} Zinsen bis {{ v0.stichtag|monat_kurz if v0.stichtag else 'Laufzeitende' }}</td></tr>{% endfor %}
+      {% if v0.nicht_moeglich %}<tr><td style="padding-left:0"><span class="tag warn">nicht möglich</span></td><td class="betrag">{{ v0.nicht_moeglich|euro_rund }}</td><td class="leise" style="text-align:right">Rahmen {{ v0.monat[:4] }} ausgeschöpft – im nächsten Jahr erneut prüfen oder anders anlegen</td></tr>{% endif %}
+    </tbody></table></div>
+  {% endif %}
+  <p class="leise" style="margin-bottom:0">Verglichen wird die Zinsersparnis bis {{ ('zum ' ~ (v0.stichtag|monat) ~ ', dem frühesten Ende einer Zinsbindung') if v0.stichtag else 'zum Laufzeitende' }} – bis dahin sind alle Zinsen fest, der Vergleich ist also fair. Jedes Darlehen wird nur mit dem Betrag gerechnet, der im Jahr {{ v0.monat[:4] }} laut Vertrag noch sondergetilgt werden darf (bereits geleistete Sondertilgungen sind abgezogen). Die Sondertilgung „verzinst“ sich risikofrei mit dem Sollzins.</p>
   {% endif %}
 </section>
 {% endif %}
