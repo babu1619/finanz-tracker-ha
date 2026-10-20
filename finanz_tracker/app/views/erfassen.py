@@ -15,7 +15,7 @@ bp = Blueprint("erfassen", __name__, url_prefix="/erfassen")
 
 def _konten():
     sichtbar = auth.sichtbare_konten(nur_aktive=True, mit_darlehen=False)
-    return q(f"SELECT * FROM konto WHERE id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) "
+    return q(f"SELECT * FROM konto WHERE typ != 'krypto' AND id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) "
              f"ORDER BY typ != 'bargeld', sortierung, name", sichtbar)
 
 

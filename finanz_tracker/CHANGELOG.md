@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.7.0 – Oktober 2026
+
+- Prüf-Modus: Notizfeld in der Einzelansicht und in der Tabelle
+- Darlehen: maximale Sondertilgung pro Jahr wahlweise in % oder in € (die andere Angabe wird mitgerechnet; ein fester Euro-Betrag hat Vorrang)
+- Darlehen: Monatsrate inklusive Bausparen – Darlehen, Bausparen und Gesamt in der Übersicht und auf der Darlehensseite (in der Sparphase die Sparrate, nach der Zuteilung die Rate des Bauspardarlehens)
+- Darlehen: kumulierte Restschuld zu jedem Ende einer Zinsbindung (alle Darlehen, davon neu zu finanzieren)
+- Darlehen: Anschlussfinanzierung simulieren (Rate und Sollzins nach der Zinsbindung) mit Vergleich zu „weiter wie bisher“; als Planannahme übernehmbar – Tilgungsplan, Restschuld-Übersicht und Bausparvergleich rechnen dann damit
+- Neuer Bereich „Krypto“: Bitcoin- und Ethereum-Bestände als Konto vom Typ „Krypto“ (Menge, optional Einstandswert), aktueller Wert, Gewinn, Kursverlauf mit wählbarem Zeitraum (7 Tage bis alles) für Kurs oder Bestand. Kurse (CoinGecko) werden jede Nacht um 4 Uhr und auf Knopfdruck abgerufen; der letzte Abruf steht oben auf der Seite. Je Bestand einstellbar, ob er im Dashboard zum Vermögen zählt
+
 ## 0.6.0 – Oktober 2026
 
 - Abos & Verträge als eigene Einträge: Art (Abo, Fixkosten, Vertrag), Betrag, frei wählbarer Zahlungsrhythmus, Vertragsbeginn, Laufzeit, automatische Verlängerung, Kündigungsfrist (Tage/Wochen/Monate), „gekündigt zum“. Einen Monat vor Ablauf der Kündigungsfrist erscheint oben auf jeder Seite ein Hinweis. Bisherige Abo-/Fixkosten-Markierungen werden übernommen

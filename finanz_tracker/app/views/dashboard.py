@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request
 
 from .. import auth
 from ..db import q
-from ..services import budgets, depot, importer, ruecklagen, statistik, umbuchungen, vertraege
+from ..services import budgets, depot, importer, krypto, ruecklagen, statistik, umbuchungen, vertraege
 from ..db import commit
 from ..util import monat_plus
 from . import monat_param, int_oder_none
@@ -38,7 +38,12 @@ def index():
         marks = ",".join("?" * len(sichtbar))
         for k in q(f"SELECT * FROM konto WHERE id IN ({marks}) AND aktiv = 1 ORDER BY typ = 'darlehen', sortierung, name",
                    sichtbar):
-            saldo = depot.wert(k["id"]) if k["typ"] == "depot" else importer.kontostand(k["id"])
+            if k["typ"] == "depot":
+                saldo = depot.wert(k["id"])
+            elif k["typ"] == "krypto":
+                saldo = krypto.wert(k["id"])
+            else:
+                saldo = importer.kontostand(k["id"])
             from ..services import darlehen as dl
             if k["typ"] == "darlehen" and not dl.hat_importierte_buchungen(k["id"]):
                 d = dl.lade(k["id"])
@@ -47,9 +52,9 @@ def index():
             letzter = importer.letzter_import(k["id"])
             tage = importer.tage_seit(letzter["zeitpunkt"]) if letzter else None
             konto_rows.append({"k": k, "saldo": saldo, "letzter": letzter, "tage": tage,
-                               "faellig": k["typ"] not in ("bargeld", "depot", "darlehen") and
+                               "faellig": k["typ"] not in ("bargeld", "depot", "darlehen", "krypto") and
                                (tage is None or tage > k["import_erinnerung_tage"])})
-            if k["typ"] != "darlehen":
+            if k["typ"] != "darlehen" and (k["typ"] != "krypto" or krypto.im_vermoegen(k["id"])):
                 vermoegen += saldo
     marks = ",".join("?" * len(konten)) or "NULL"
     ohne_kat = q(f"SELECT COUNT(*) AS n FROM buchung WHERE konto_id IN ({marks}) AND kategorie_id IS NULL "

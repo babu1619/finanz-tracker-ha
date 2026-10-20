@@ -392,3 +392,18 @@ a.quelle { display: inline-block; margin-right: 6px; color: var(--accent); }
   .dg-editor-inhalt { grid-template-columns: minmax(0, 1fr); }
   .dg-knoepfe { opacity: 1; }
 }
+
+/* 0.7.0: Raten-Aufstellung, Krypto */
+.ratenliste { margin-top: 6px; font-size: 13px; color: var(--ink2); display: flex; flex-direction: column; gap: 2px; }
+.ratenliste div { display: flex; justify-content: space-between; gap: 10px; }
+.ratenliste b { font-family: var(--mono, monospace); font-weight: 600; color: var(--ink); }
+.ratenliste .gesamt { border-top: 1px solid #C9D1CD; padding-top: 3px; margin-top: 2px; }
+tr.summe td { border-top: 2px solid #C9D1CD; }
+.krypto-kopf { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.zeitwahl { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.zeitwahl button.an { background: var(--ink); color: #fff; border-color: var(--ink); }
+@media (min-width: 900px) and (max-width: 1420px) {
+  header.top { gap: 10px 14px; padding: 10px 16px; }
+  header.top nav a { padding: 9px 8px; font-size: 14.5px; }
+  header.top .wer { gap: 8px; }
+}

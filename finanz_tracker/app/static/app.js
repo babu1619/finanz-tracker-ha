@@ -555,6 +555,28 @@ document.addEventListener("DOMContentLoaded", () => {
     feld.addEventListener("keydown", (e) => { if (e.key === "Escape") { feld.value = ""; filtern(); } });
   });
 
+  // Darlehenskonditionen: Sondertilgung in % und € gegenseitig ausrechnen
+  const stProzent = document.getElementById("st-prozent"), stEuro = document.getElementById("st-euro");
+  if (stProzent && stEuro) {
+    const ursprung = document.querySelector("input[name=ursprung]");
+    const zahlAus = (t) => {
+      let s = (t || "").replace(/[€\s]/g, "");
+      if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+      else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+      const n = parseFloat(s);
+      return isNaN(n) ? null : n;
+    };
+    const fmt = (n, stellen) => n.toLocaleString("de-DE", { minimumFractionDigits: stellen, maximumFractionDigits: stellen });
+    stProzent.addEventListener("input", () => {
+      const p = zahlAus(stProzent.value), u = zahlAus(ursprung.value);
+      stEuro.value = p !== null && u ? fmt((u * p) / 100, 2) : "";
+    });
+    stEuro.addEventListener("input", () => {
+      const e = zahlAus(stEuro.value), u = zahlAus(ursprung.value);
+      stProzent.value = e !== null && u ? fmt((e / u) * 100, 2).replace(/,?0+$/, "") : "";
+    });
+  }
+
   // Dashboard: Unterkategorien auf- und zuklappen (Zustand je Gerät merken)
   const offenKey = "ft-kat-offen";
   let offen = [];

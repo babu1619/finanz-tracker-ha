@@ -218,7 +218,7 @@ def _darlehen_liste():
 
 def _gegenkonten_liste():
     sichtbar = auth.sichtbare_konten(nur_aktive=True, mit_darlehen=False)
-    return q(f"SELECT id, name, typ FROM konto WHERE id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) ORDER BY sortierung, name",
+    return q(f"SELECT id, name, typ FROM konto WHERE typ != 'krypto' AND id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) ORDER BY sortierung, name",
              sichtbar)
 
 

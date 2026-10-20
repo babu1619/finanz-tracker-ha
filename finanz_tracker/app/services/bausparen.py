@@ -175,3 +175,15 @@ def kennzahlen(v, heute: date | None = None) -> dict:
 def summe_guthaben(heute: date | None = None) -> int:
     monat = monat_plus(monat_von(heute or date.today()), -1)
     return sum(guthaben_im(v, monat) for v in alle(nur_aktive=True))
+
+
+
+def aktuelle_rate(v, heute: date | None = None) -> int:
+    """Monatliche Zahlung heute: Sparrate in der Sparphase, Zins- und Tilgungsbeitrag nach der Zuteilung."""
+    monat = monat_von(heute or date.today())
+    if monat < v["beginn"]:
+        return 0
+    k = kennzahlen(v, heute)
+    if k["zuteilung"] and monat > k["zuteilung"]["monat"]:
+        return k["rate"] if k["ende"] and monat <= k["ende"] else 0
+    return v["sparrate_cent"] or 0

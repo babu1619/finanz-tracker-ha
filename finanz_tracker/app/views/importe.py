@@ -249,7 +249,7 @@ def profil_datei(pid):
 
 def _screenshot_konten():
     sichtbar = auth.sichtbare_konten(nur_aktive=True, mit_darlehen=False)
-    return q(f"SELECT * FROM konto WHERE id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) "
+    return q(f"SELECT * FROM konto WHERE typ != 'krypto' AND id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) "
              f"ORDER BY typ != 'kreditkarte', sortierung, name", sichtbar)
 
 

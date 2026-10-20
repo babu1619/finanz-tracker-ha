@@ -50,6 +50,7 @@
       </div>
       <label class="feld">Tags (mit Komma trennen)<input type="text" name="tags" id="pruef-tags" value="{{ tag_text }}" list="tag-liste" placeholder="optional, z. B. Steuer 2026" autocomplete="off"></label>
       <datalist id="tag-liste">{% for t in alle_tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
+      <label class="feld">Notiz<input type="text" name="notiz" value="{{ b.notiz or '' }}" placeholder="optional, z. B. Geschenk für Oma, Rechnung liegt im Ordner" autocomplete="off"></label>
       {% if tag_vorschlag %}<div class="chips klein-chips">{% for t in tag_vorschlag %}<button type="button" class="chip-knopf" data-tag-plus="{{ t }}">+ {{ t }}</button>{% endfor %}<span class="leise">früher bei dieser Gegenpartei</span></div>{% endif %}
       <div style="background:var(--bg);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
         <label class="check"><input type="checkbox" name="regel" value="1"> Regel erstellen: künftig automatisch so zuordnen, wenn</label>

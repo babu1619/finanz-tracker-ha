@@ -8,9 +8,16 @@
     <h1>{{ k.name if k else 'Neues Konto' }}</h1>
     <div class="formreihe">
       <label class="feld" style="flex:2 1 220px">Name<input type="text" name="name" value="{{ k.name if k }}" required></label>
-      <label class="feld">Typ<select name="typ">{% for t, n in typen.items() %}<option value="{{ t }}" {{ 'selected' if (k and k.typ == t) or (not k and request.args.get('typ') == t) }}>{{ n }}</option>{% endfor %}</select></label>
+      <label class="feld">Typ<select name="typ" data-art-wahl>{% for t, n in typen.items() %}<option value="{{ t }}" {{ 'selected' if (k and k.typ == t) or (not k and request.args.get('typ') == t) }}>{{ n }}</option>{% endfor %}</select></label>
     </div>
-    <div class="formreihe">
+    <fieldset class="formreihe" data-nur="krypto" hidden style="border:0;padding:12px;margin:0;background:var(--bg);border-radius:8px">
+      <legend class="leise" style="padding:0 4px">Krypto-Bestand</legend>
+      <label class="feld">Coin<select name="coin">{% for c, info in coins.items() %}<option value="{{ c }}" {{ 'selected' if kr and kr.coin == c }}>{{ info.name }} ({{ info.kurz }})</option>{% endfor %}</select></label>
+      <label class="feld">Menge<input type="text" name="menge" inputmode="decimal" value="{{ ('%.8f'|format(kr.menge)).rstrip('0').rstrip('.').replace('.', ',') if kr else '' }}" placeholder="z. B. 0,0525" class="mono"></label>
+      <label class="feld">Einstandswert gesamt (optional)<input type="text" name="einstand" inputmode="decimal" value="{{ ('%.2f'|format(kr.einstand_cent / 100)).replace('.', ',') if kr and kr.einstand_cent }}" placeholder="bezahlt, z. B. 2.500"></label>
+      <label class="check" style="flex:1 1 100%"><input type="checkbox" name="im_vermoegen" value="1" {{ 'checked' if not kr or kr.im_vermoegen }}> im Dashboard zum Vermögen zählen</label>
+    </fieldset>
+    <div class="formreihe" data-nur="giro tagesgeld kreditkarte bargeld depot darlehen sonstiges">
       <label class="feld" style="flex:2 1 240px">IBAN (für automatische Erkennung und Umbuchungen)<input type="text" name="iban" value="{{ k.iban or '' if k }}" class="mono"></label>
       <label class="feld">Institut<input type="text" name="institut" value="{{ k.institut or '' if k }}"></label>
     </div>
@@ -20,7 +27,7 @@
         <option value="alle" {{ 'selected' if not k or k.sichtbarkeit == 'alle' }}>alle Benutzer</option>
         <option value="privat" {{ 'selected' if k and k.sichtbarkeit == 'privat' }}>nur Eigentümer (privat)</option></select></label>
     </div>
-    <div class="formreihe">
+    <div class="formreihe" data-nur="giro tagesgeld kreditkarte bargeld depot darlehen sonstiges">
       <label class="feld">Importprofil<select name="importprofil_id"><option value="">– keins –</option>
         {% for p in profile %}<option value="{{ p.id }}" {{ 'selected' if kp and kp.importprofil_id == p.id }}>{{ p.name }} ({{ p.format|upper }})</option>{% endfor %}</select></label>
       <label class="feld">Erkennungswert (optional, z. B. letzte Ziffern)<input type="text" name="erkennungswert" value="{{ kp.erkennungswert or '' if kp }}"></label>

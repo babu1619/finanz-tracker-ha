@@ -26,7 +26,7 @@ def _offene():
 def _gegenkonten():
     """Eigene Konten, auf die umgebucht werden kann (ohne Darlehen)."""
     sichtbar = auth.sichtbare_konten(nur_aktive=True, mit_darlehen=False)
-    return q(f"SELECT id, name, typ FROM konto WHERE id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) "
+    return q(f"SELECT id, name, typ FROM konto WHERE typ != 'krypto' AND id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) "
              f"ORDER BY sortierung, name", sichtbar)
 
 
@@ -49,9 +49,13 @@ def _tagnamen(text: str) -> list[str]:
     return [t.strip() for t in (text or "").split(",") if t.strip()]
 
 
-def _speichere_eine(b, kat, person, monat, tagtext, art, gegenkonto) -> str:
-    """Speichert die Zuordnung einer Buchung. Rückgabe: Kurzbeschreibung für die Meldung."""
+def _speichere_eine(b, kat, person, monat, tagtext, art, gegenkonto, notiz=None) -> str:
+    """Speichert die Zuordnung einer Buchung. Rückgabe: Kurzbeschreibung für die Meldung.
+
+    notiz=None lässt die Notiz unverändert, "" löscht sie."""
     tags.setze(b["id"], _tagnamen(tagtext))
+    if notiz is not None:
+        exe("UPDATE buchung SET notiz = ? WHERE id = ?", (notiz.strip() or None, b["id"]))
     if art == "umbuchung":
         if gegenkonto == b["konto_id"]:
             gegenkonto = None
@@ -158,7 +162,8 @@ def tabelle_speichern():
             n["ohne"] += 1
             continue
         erg = _speichere_eine(b, kat, int_oder_none(f.get(f"person_{bid}")), b["abrechnungsmonat"],
-                              f.get(f"tags_{bid}", ""), art, int_oder_none(gegen) if gegen != "extern" else None)
+                              f.get(f"tags_{bid}", ""), art, int_oder_none(gegen) if gegen != "extern" else None,
+                              f.get(f"notiz_{bid}"))
         n[erg] = n.get(erg, 0) + 1
     commit()
     teile = []
@@ -197,7 +202,7 @@ def speichern(bid):
     person = int_oder_none(request.form.get("person_id"))
     gegen = request.form.get("gegenkonto", "")
     erg = _speichere_eine(b, kat, person, request.form.get("abrechnungsmonat"), request.form.get("tags", ""), art,
-                          int_oder_none(gegen) if gegen and gegen != "extern" else None)
+                          int_oder_none(gegen) if gegen and gegen != "extern" else None, request.form.get("notiz"))
     if erg == "verknuepft":
         melde("Als Umbuchung mit der Gegenbuchung verknüpft.")
     elif erg == "angelegt":

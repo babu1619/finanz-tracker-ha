@@ -127,7 +127,7 @@
     <tbody>
     {% for r in konten %}
       <tr>
-        <td><a class="kontolink" href="{% if r.k.typ == 'darlehen' %}{{ url_for('darlehen.detail', kid=r.k.id) }}{% elif r.k.typ == 'depot' %}{{ url_for('depot.detail', kid=r.k.id) }}{% else %}{{ url_for('buchungen.liste', konto=r.k.id, monat='alle') }}{% endif %}"><b>{{ r.k.name }}</b></a> <span class="leise">{{ {'giro':'Giro','tagesgeld':'Tagesgeld','kreditkarte':'Kreditkarte','bargeld':'Bargeld','depot':'Depot','darlehen':'Darlehen · eigener Bereich, nicht in Summen','sonstiges':''}[r.k.typ] }}</span></td>
+        <td><a class="kontolink" href="{% if r.k.typ == 'darlehen' %}{{ url_for('darlehen.detail', kid=r.k.id) }}{% elif r.k.typ == 'depot' %}{{ url_for('depot.detail', kid=r.k.id) }}{% elif r.k.typ == 'krypto' %}{{ url_for('krypto.index') }}{% else %}{{ url_for('buchungen.liste', konto=r.k.id, monat='alle') }}{% endif %}"><b>{{ r.k.name }}</b></a> <span class="leise">{{ {'giro':'Giro','tagesgeld':'Tagesgeld','kreditkarte':'Kreditkarte','bargeld':'Bargeld','depot':'Depot','krypto':'Krypto','darlehen':'Darlehen · eigener Bereich, nicht in Summen','sonstiges':''}[r.k.typ] }}</span></td>
         <td class="betrag">{{ r.saldo|euro }}</td>
         <td class="leise">{% if r.letzter %}{{ r.letzter.zeitpunkt|datum }}{% if r.tage == 0 %} · heute{% elif r.tage == 1 %} · gestern{% elif r.tage is not none %} · vor {{ r.tage }} Tagen{% endif %}{% else %}noch nie{% endif %}</td>
         <td>{% if r.letzter and r.letzter.saldo_differenz_cent %}<span class="tag bad">Saldo weicht ab</span>

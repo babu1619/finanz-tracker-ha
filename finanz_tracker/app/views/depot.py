@@ -29,7 +29,7 @@ def _konto(kid):
 
 def _gegenkonten(kid):
     sichtbar = auth.sichtbare_konten(nur_aktive=True, mit_darlehen=False)
-    return q(f"SELECT id, name, typ FROM konto WHERE id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) AND id != ? "
+    return q(f"SELECT id, name, typ FROM konto WHERE typ != 'krypto' AND id IN ({','.join('?' * len(sichtbar)) or 'NULL'}) AND id != ? "
              f"ORDER BY sortierung, name", list(sichtbar) + [kid])
 
 

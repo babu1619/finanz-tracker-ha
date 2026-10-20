@@ -53,7 +53,12 @@ def index():
         except ValueError:
             melde("Ungültiger Betrag.", "warn")
     bauspar = [bs.kennzahlen(v) for v in bs.alle()]
-    return render_template("darlehen.html", bauspar=bauspar,
+    raten = {"darlehen": [(k["d"]["name"], k["d"]["rate_cent"]) for k in karten if k["d"]["aktiv"] and k["restschuld"] > 0],
+             "bausparen": [(b["v"]["name"], bs.aktuelle_rate(b["v"])) for b in bauspar if b["v"]["aktiv"] and bs.aktuelle_rate(b["v"])]}
+    raten["summe_darlehen"] = sum(r for _, r in raten["darlehen"])
+    raten["summe_bausparen"] = sum(r for _, r in raten["bausparen"])
+    zb_termine = dl.restschuld_zu_zinsbindungsenden([d for d in darlehen if d["aktiv"]])
+    return render_template("darlehen.html", bauspar=bauspar, raten=raten, zb_termine=zb_termine,
                            bauspar_guthaben=sum(b["guthaben"] for b in bauspar if b["v"]["aktiv"]), karten=karten, ohne=ohne, gesamt=gesamt, immobilien=for_imm,
                            verlauf=verlauf, max_verlauf=max([v["rest"] for v in verlauf] + [1]), heute_jahr=date.today().year,
                            vergleich=vergleich, vergleich_betrag=betrag or "")
@@ -77,6 +82,13 @@ def detail(kid):
             sim = dl.simuliere(d, cent, monat, jaehrlich=bool(a.get("sim_jaehrlich")))
         except ValueError:
             melde("Ungültiger Betrag.", "warn")
+    sim_anschluss = None
+    if a.get("anschluss_zins") and a.get("anschluss_rate") and d["zinsbindung_bis"]:
+        try:
+            sim_anschluss = dl.simuliere_anschluss(d, float(a["anschluss_zins"].replace(",", ".")),
+                                                   abs(parse_euro_eingabe(a["anschluss_rate"])))
+        except ValueError:
+            melde("Zins und Rate prüfen.", "warn")
     konto_saldo = importer.kontostand(kid)
     hat_buchungen = dl.hat_importierte_buchungen(kid)
     ereignis_info = {e["id"]: e for e in q("""SELECT e.id, zb.buchungsdatum AS zahl_datum, zk.name AS zahl_konto,
@@ -93,7 +105,32 @@ def detail(kid):
     return render_template("darlehen_detail.html", k=k, d=d, sim=sim, jahre=jahre, konto_saldo=konto_saldo,
                            hat_buchungen=hat_buchungen, monat=aktueller_monat(), a=a,
                            ereignis_info=ereignis_info, bausparvertraege=bs.alle(darlehen_konto_id=kid),
-                           zahlungen=dl.zahlungen(kid, auth.sichtbare_konten()))
+                           zahlungen=dl.zahlungen(kid, auth.sichtbare_konten()), sim_anschluss=sim_anschluss,
+                           bauspar_rate=sum(bs.aktuelle_rate(v) for v in bs.alle(darlehen_konto_id=kid) if v["aktiv"]))
+
+
+@bp.route("/<int:kid>/anschluss", methods=["POST"])
+@auth.schreibrecht
+def anschluss(kid):
+    """Simulierte Anschlussfinanzierung als Planannahme übernehmen oder zurücksetzen."""
+    if kid not in _konten() or not dl.lade(kid):
+        abort(404)
+    f = request.form
+    if f.get("aktion") == "zuruecksetzen":
+        exe("UPDATE darlehen SET anschluss_sollzins = NULL, anschluss_rate_cent = NULL WHERE konto_id = ?", (kid,))
+        melde("Planannahme entfernt – nach der Zinsbindung rechnet der Plan wieder mit gleichem Zins und gleicher Rate.")
+    else:
+        try:
+            zins = float(f.get("zins", "").replace(",", "."))
+            rate = abs(parse_euro_eingabe(f.get("rate", "")))
+        except ValueError:
+            melde("Zins und Rate prüfen.", "warn")
+            return redirect(url_for("darlehen.detail", kid=kid))
+        exe("UPDATE darlehen SET anschluss_sollzins = ?, anschluss_rate_cent = ? WHERE konto_id = ?", (zins, rate, kid))
+        melde("Anschlussfinanzierung als Planannahme übernommen – Tilgungsplan, Restschuld und Bausparvergleich rechnen damit.")
+    log_aenderung(g.user["id"], "darlehen", kid, "anschluss", dict(f))
+    commit()
+    return redirect(url_for("darlehen.detail", kid=kid))
 
 
 @bp.route("/<int:kid>/zahlungen-zuordnen", methods=["POST"])
@@ -126,6 +163,9 @@ def konditionen(kid):
             rate = abs(parse_euro_eingabe(f.get("rate", "")))
             zins = float((f.get("sollzins") or "").replace(",", "."))
             sonder = float((f.get("sondertilgung_prozent") or "0").replace(",", ".")) or None
+            sonder_max = abs(parse_euro_eingabe(f.get("sondertilgung_max", ""))) or None
+            a_zins = float(f["anschluss_sollzins"].replace(",", ".")) if f.get("anschluss_sollzins", "").strip() else None
+            a_rate = abs(parse_euro_eingabe(f.get("anschluss_rate", ""))) or None
         except ValueError:
             melde("Bitte Zahlen prüfen (Beträge wie 250.000,00; Zins wie 1,45).", "warn")
             return redirect(url_for("darlehen.konditionen", kid=kid))
@@ -136,12 +176,17 @@ def konditionen(kid):
         zb = f.get("zinsbindung_bis") if ist_monat(f.get("zinsbindung_bis", "")) else None
         werte = (int_oder_none(f.get("immobilie_id")), ursprung, zins, rate, erste, zb, sonder,
                  int_oder_none(f.get("zahlkonto_id")), int_oder_none(f.get("erinnerung_monate")) or 24)
+        if not (a_zins is not None and a_rate):
+            a_zins = a_rate = None
+        werte = werte + (sonder_max, a_zins, a_rate)
         if d:
             exe("UPDATE darlehen SET immobilie_id=?, ursprung_cent=?, sollzins=?, rate_cent=?, erste_rate=?, zinsbindung_bis=?, "
-                "sondertilgung_prozent=?, zahlkonto_id=?, erinnerung_monate=? WHERE konto_id = ?", (*werte, kid))
+                "sondertilgung_prozent=?, zahlkonto_id=?, erinnerung_monate=?, sondertilgung_max_cent=?, "
+                "anschluss_sollzins=?, anschluss_rate_cent=? WHERE konto_id = ?", (*werte, kid))
         else:
             exe("INSERT INTO darlehen (immobilie_id, ursprung_cent, sollzins, rate_cent, erste_rate, zinsbindung_bis, "
-                "sondertilgung_prozent, zahlkonto_id, erinnerung_monate, konto_id) VALUES (?,?,?,?,?,?,?,?,?,?)", (*werte, kid))
+                "sondertilgung_prozent, zahlkonto_id, erinnerung_monate, sondertilgung_max_cent, anschluss_sollzins, "
+                "anschluss_rate_cent, konto_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (*werte, kid))
         log_aenderung(g.user["id"], "darlehen", kid, "konditionen", dict(f))
         n = dl.zahlungen_zuordnen(konto_id=kid)
         commit()

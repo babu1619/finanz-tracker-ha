@@ -23,12 +23,27 @@ def ereignisse(konto_id: int) -> list:
     return q("SELECT * FROM darlehen_ereignis WHERE konto_id = ? ORDER BY datum, id", (konto_id,))
 
 
-def plan(d, ereig=None, extra: dict | None = None, ab_heute=False) -> list[dict]:
+def _anschluss(d, anschluss):
+    """Konditionen nach Ende der Zinsbindung: übergeben, gespeichert oder (ohne Angabe) wie bisher."""
+    if anschluss == "keine" or not d["zinsbindung_bis"]:
+        return None
+    if isinstance(anschluss, dict):
+        return anschluss
+    keys = d.keys() if hasattr(d, "keys") else d
+    if "anschluss_sollzins" in keys and d["anschluss_sollzins"] is not None and d["anschluss_rate_cent"]:
+        return {"zins": d["anschluss_sollzins"], "rate": d["anschluss_rate_cent"]}
+    return None
+
+
+def plan(d, ereig=None, extra: dict | None = None, ab_heute=False, anschluss="gespeichert") -> list[dict]:
     """Monatlicher Tilgungsplan bis zur vollständigen Rückzahlung.
 
     extra: zusätzliche (simulierte) Sondertilgungen {monat: cent}.
+    anschluss: Konditionen ab dem Monat nach Ende der Zinsbindung – {"zins": %, "rate": cent}, "gespeichert"
+    (Planannahme aus den Konditionen, sonst gleicher Zins und gleiche Rate) oder "keine".
     Rückgabe je Monat: monat, zins, tilgung, sonder, rest (Restschuld nach der Rate), rate.
     """
+    ansch = _anschluss(d, anschluss)
     ereig = ereignisse(d["konto_id"]) if ereig is None else ereig
     sonder: dict = {}
     for e in ereig:
@@ -49,8 +64,9 @@ def plan(d, ereig=None, extra: dict | None = None, ab_heute=False) -> list[dict]
     for _ in range(MAX_MONATE):
         if rest <= 0:
             break
-        zins = round(rest * zins_m)
-        rate = d["rate_cent"]
+        neu = bool(ansch and m > d["zinsbindung_bis"])
+        zins = round(rest * ((ansch["zins"] / 100 / 12) if neu else zins_m))
+        rate = ansch["rate"] if neu else d["rate_cent"]
         tilgung = rate - zins
         if tilgung <= 0:  # Rate deckt die Zinsen nicht: Plan endet hier, um Endlosschleifen zu vermeiden
             zeilen.append({"monat": m, "zins": zins, "tilgung": 0, "sonder": 0, "rest": rest, "rate": rate,
@@ -96,10 +112,11 @@ def summiere(zeilen, von: str, bis: str) -> dict:
 
 def sonder_rahmen(d, jahr: int, ereig=None) -> dict:
     """Vertraglicher Sondertilgungsrahmen im Kalenderjahr und bereits genutzter Teil."""
-    if not d["sondertilgung_prozent"]:
+    max_cent = d["sondertilgung_max_cent"] if "sondertilgung_max_cent" in d.keys() else None
+    if not d["sondertilgung_prozent"] and not max_cent:
         return {"rahmen": None, "genutzt": 0, "frei": None}
     ereig = ereignisse(d["konto_id"]) if ereig is None else ereig
-    rahmen = round(d["ursprung_cent"] * d["sondertilgung_prozent"] / 100)
+    rahmen = max_cent or round(d["ursprung_cent"] * d["sondertilgung_prozent"] / 100)
     genutzt = sum(e["betrag_cent"] for e in ereig if e["art"] == "sondertilgung" and e["datum"][:4] == str(jahr))
     return {"rahmen": rahmen, "genutzt": genutzt, "frei": max(0, rahmen - genutzt)}
 
@@ -286,3 +303,42 @@ def zahlungen(konto_id: int, sichtbar: list[int]) -> dict:
         j["anzahl"] += 1
     return {"liste": rows[:24], "anzahl": len(rows), "jahre": dict(sorted(jahre.items(), reverse=True)),
             "summe": -sum(r["betrag_cent"] for r in rows)}
+
+
+
+def simuliere_anschluss(d, zins: float, rate_cent: int) -> dict:
+    """Anschlussfinanzierung: ab Ende der Zinsbindung neue Rate und neuer Sollzins, verglichen mit „weiter wie bisher“."""
+    zb = d["zinsbindung_bis"]
+    ereig = ereignisse(d["konto_id"])
+    bisher = plan(d, ereig, anschluss="keine")
+    neu = plan(d, ereig, anschluss={"zins": zins, "rate": rate_cent})
+    rest_zb = restschuld(bisher, zb, d)
+    zins_m = zins / 100 / 12
+    mindest = round(rest_zb * zins_m) + 1
+    def nach(zeilen):
+        return [z for z in zeilen if z["monat"] > zb]
+    n_neu, n_bisher = nach(neu), nach(bisher)
+    erg = {
+        "zins": zins, "rate": rate_cent, "monat": zb, "rest_zb": rest_zb,
+        "ende_neu": neu[-1]["monat"] if neu else None, "ende_bisher": bisher[-1]["monat"] if bisher else None,
+        "zinsen_neu": sum(z["zins"] for z in n_neu), "zinsen_bisher": sum(z["zins"] for z in n_bisher),
+        "monate_neu": len(n_neu), "monate_bisher": len(n_bisher),
+        "anfangstilgung": ((rate_cent * 12 - rest_zb * zins / 100) / rest_zb * 100) if rest_zb else None,
+        "mindestrate": mindest, "fehler": next((z["fehler"] for z in neu if z.get("fehler")), None),
+        "rest_10": restschuld(neu, monat_plus(zb, 120), d),
+    }
+    erg["zinsen_differenz"] = erg["zinsen_neu"] - erg["zinsen_bisher"]
+    return erg
+
+
+def restschuld_zu_zinsbindungsenden(darlehen: list) -> list[dict]:
+    """Kumulierte Restschuld aller Darlehen zu jedem Zinsbindungsende (sortiert)."""
+    plaene = {d["konto_id"]: plan(d) for d in darlehen}
+    termine = sorted({d["zinsbindung_bis"] for d in darlehen if d["zinsbindung_bis"]})
+    erg = []
+    for t in termine:
+        je = [{"d": d, "rest": restschuld(plaene[d["konto_id"]], t, d), "endet": d["zinsbindung_bis"] == t}
+              for d in darlehen]
+        erg.append({"monat": t, "je": je, "summe": sum(x["rest"] for x in je),
+                    "faellig": sum(x["rest"] for x in je if x["endet"])})
+    return erg

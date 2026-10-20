@@ -27,6 +27,7 @@
     <a href="{{ url_for('sparen.index') }}" class="{{ 'aktiv' if ep.startswith('sparen') }}">Sparen</a>
     <a href="{{ url_for('auswertung.index') }}" class="{{ 'aktiv' if ep.startswith('auswertung') }}">Auswertung</a>
     <a href="{{ url_for('darlehen.index') }}" class="{{ 'aktiv' if ep.startswith('darlehen') }}">Darlehen</a>
+    <a href="{{ url_for('krypto.index') }}" class="{{ 'aktiv' if ep.startswith('krypto') }}">Krypto</a>
     {% if darf_schreiben %}<a href="{{ url_for('importe.index') }}" class="{{ 'aktiv' if ep.startswith('importe') }}">Import</a>{% endif %}
     {% set mehr_aktiv = ep.split('.')[0] in ('kategorien', 'regeln', 'tags', 'vertraege', 'konten', 'admin', 'pwa') %}
     <details class="mehr{{ ' aktiv' if mehr_aktiv }}">

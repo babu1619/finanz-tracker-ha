@@ -10,7 +10,12 @@
 <div class="kpis">
   <div class="kpi"><div class="label">Restschuld gesamt</div><div class="wert">{{ gesamt.rest|euro_rund }}</div>
     <div class="unter">von {{ gesamt.ursprung|euro_rund }} · {{ ((1 - gesamt.rest / gesamt.ursprung) * 100)|round|int if gesamt.ursprung else 0 }} % getilgt</div></div>
-  <div class="kpi"><div class="label">Monatsrate gesamt</div><div class="wert">{{ gesamt.rate|euro_rund }}</div><div class="unter">laut Konditionen</div></div>
+  <div class="kpi"><div class="label">Monatsrate{{ ' inkl. Bausparen' if raten.bausparen }}</div><div class="wert">{{ (raten.summe_darlehen + raten.summe_bausparen)|euro_rund }}</div>
+    <div class="ratenliste">
+      <div><span>Darlehen</span><b>{{ raten.summe_darlehen|euro_rund }}</b></div>
+      {% if raten.bausparen %}<div><span>Bausparen</span><b>{{ raten.summe_bausparen|euro_rund }}</b></div>
+      <div class="gesamt"><span>Gesamt</span><b>{{ (raten.summe_darlehen + raten.summe_bausparen)|euro_rund }}</b></div>{% endif %}
+    </div></div>
   <div class="kpi"><div class="label">Tilgung {{ heute_jahr }}</div><div class="wert pos">{{ gesamt.tilgung_jahr|euro_rund }}</div><div class="unter">inkl. Sondertilgungen, Plan</div></div>
   <div class="kpi"><div class="label">Zinsen {{ heute_jahr }}</div><div class="wert">{{ gesamt.zins_jahr|euro_rund }}</div><div class="unter">Plan für das ganze Jahr</div></div>
 </div>
@@ -33,6 +38,33 @@
   <div class="karte leer" style="grid-column:1/-1">Noch keine Darlehen mit Konditionen. Lege unter Konten ein Konto vom Typ „Darlehen“ an und trage dann hier die Konditionen ein.</div>
 {% endfor %}
 </div>
+
+{% if raten.darlehen|length + raten.bausparen|length > 1 %}
+<section class="karte">
+  <h2>Monatliche Belastung</h2>
+  <div class="scroll"><table class="tab vergleich">
+    <tbody>
+      {% for name, r in raten.darlehen %}<tr><td style="padding-left:0">Darlehen {{ name }}</td><td class="betrag">{{ r|euro }}</td></tr>{% endfor %}
+      {% if raten.darlehen|length > 1 %}<tr><td style="padding-left:0"><b>Darlehen</b></td><td class="betrag"><b>{{ raten.summe_darlehen|euro }}</b></td></tr>{% endif %}
+      {% for name, r in raten.bausparen %}<tr><td style="padding-left:0">Bausparen {{ name }}</td><td class="betrag">{{ r|euro }}</td></tr>{% endfor %}
+      {% if raten.bausparen|length > 1 %}<tr><td style="padding-left:0"><b>Bausparen</b></td><td class="betrag"><b>{{ raten.summe_bausparen|euro }}</b></td></tr>{% endif %}
+      <tr class="summe"><td style="padding-left:0"><b>Gesamt</b></td><td class="betrag"><b>{{ (raten.summe_darlehen + raten.summe_bausparen)|euro }}</b></td></tr>
+    </tbody></table></div>
+</section>
+{% endif %}
+
+{% if zb_termine %}
+<section class="karte">
+  <div class="kopf"><h2 style="margin:0">Restschuld zu den Zinsbindungsenden</h2><span class="rechts leise">laut Plan, alle Darlehen</span></div>
+  <div class="scroll"><table class="tab vergleich" style="margin-top:8px">
+    <thead><tr><th style="padding-left:0">Zinsbindung endet</th>{% for x in zb_termine[0].je %}<th style="text-align:right">{{ x.d.name }}</th>{% endfor %}<th style="text-align:right">Restschuld gesamt</th><th style="text-align:right">davon neu zu finanzieren</th></tr></thead>
+    <tbody>{% for t in zb_termine %}<tr>
+      <td style="padding-left:0"><b>{{ t.monat|monat }}</b></td>
+      {% for x in t.je %}<td class="betrag {{ 'best' if x.endet }}">{{ x.rest|euro_rund }}{% if x.endet %} <span class="tag warn">endet</span>{% endif %}</td>{% endfor %}
+      <td class="betrag"><b>{{ t.summe|euro_rund }}</b></td><td class="betrag">{{ t.faellig|euro_rund }}</td></tr>{% endfor %}</tbody></table></div>
+  <p class="leise" style="margin-bottom:0">Nach dem Ende einer Zinsbindung rechnet der Plan mit derselben Rate und demselben Zins weiter – oder mit der Anschlussfinanzierung, die du auf der Seite des Darlehens simuliert und übernommen hast.</p>
+</section>
+{% endif %}
 
 {% if bauspar %}
 <div class="kopf" style="margin-top:6px"><h2 style="margin:0">Bausparverträge</h2><span class="leise">Guthaben gesamt {{ bauspar_guthaben|euro_rund }}</span></div>

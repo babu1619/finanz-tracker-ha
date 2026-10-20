@@ -2,14 +2,15 @@ from flask import Blueprint, abort, g, redirect, render_template, request, url_f
 
 from .. import auth
 from ..db import q, q1, exe, commit, log_aenderung
-from ..services import depot, importer
+from ..services import depot, importer, krypto
 from ..util import parse_euro_eingabe, norm_iban
 from . import melde, int_oder_none
 
 bp = Blueprint("konten", __name__, url_prefix="/konten")
 
 TYPEN = {"giro": "Girokonto", "tagesgeld": "Tagesgeld", "kreditkarte": "Kreditkarte", "bargeld": "Bargeld",
-         "depot": "Depot (Einzahlungen + Rendite)", "darlehen": "Darlehen (eigener Bereich)", "sonstiges": "Sonstiges"}
+         "depot": "Depot (Einzahlungen + Rendite)", "darlehen": "Darlehen (eigener Bereich)", "krypto": "Krypto (Bitcoin, Ethereum)",
+         "sonstiges": "Sonstiges"}
 
 
 @bp.route("/")
@@ -27,14 +28,17 @@ def liste():
                    sichtbar):
             letzter = importer.letzter_import(k["id"])
             anzahl = q1("SELECT COUNT(*) AS n FROM buchung WHERE konto_id = ?", (k["id"],))["n"]
-            rows.append({"k": k, "saldo": depot.wert(k["id"]) if k["typ"] == "depot" else importer.kontostand(k["id"]), "letzter": letzter, "anzahl": anzahl,
+            rows.append({"k": k, "saldo": depot.wert(k["id"]) if k["typ"] == "depot" else
+                         krypto.wert(k["id"]) if k["typ"] == "krypto" else importer.kontostand(k["id"]), "letzter": letzter, "anzahl": anzahl,
                          "tage": importer.tage_seit(letzter["zeitpunkt"]) if letzter else None})
-    summe = sum(r["saldo"] for r in rows if r["k"]["typ"] != "darlehen" and r["k"]["aktiv"])
+    summe = sum(r["saldo"] for r in rows if r["k"]["typ"] != "darlehen" and r["k"]["aktiv"]
+                and (r["k"]["typ"] != "krypto" or krypto.im_vermoegen(r["k"]["id"])))
     return render_template("konten.html", rows=rows, summe=summe, typen=TYPEN)
 
 
 def _form(k=None, kp=None):
-    return render_template("konto.html", k=k, kp=kp, typen=TYPEN,
+    return render_template("konto.html", k=k, kp=kp, typen=TYPEN, coins=krypto.COINS,
+                           kr=q1("SELECT * FROM krypto WHERE konto_id = ?", (k["id"],)) if k else None,
                            personen=q("SELECT * FROM person WHERE aktiv = 1 ORDER BY name"),
                            profile=q("SELECT * FROM importprofil ORDER BY name"))
 
@@ -60,6 +64,19 @@ def _speichern(kid):
     else:
         kid = exe("INSERT INTO konto (name, typ, iban, institut, eigentuemer_person_id, sichtbarkeit, startsaldo_cent, "
                   "import_erinnerung_tage, aktiv) VALUES (?,?,?,?,?,?,?,?,?)", werte)
+    if werte[1] == "krypto":
+        try:
+            menge = float((f.get("menge") or "0").replace(".", "").replace(",", ".")) if "," in (f.get("menge") or "") \
+                else float(f.get("menge") or 0)
+            einstand = abs(parse_euro_eingabe(f.get("einstand", ""))) or None
+        except ValueError:
+            melde("Menge oder Einstandswert prüfen (z. B. 0,0525).", "warn")
+            menge, einstand = 0.0, None
+        exe("""INSERT INTO krypto (konto_id, coin, menge, einstand_cent, im_vermoegen) VALUES (?,?,?,?,?)
+               ON CONFLICT(konto_id) DO UPDATE SET coin = excluded.coin, menge = excluded.menge,
+               einstand_cent = excluded.einstand_cent, im_vermoegen = excluded.im_vermoegen""",
+            (kid, f.get("coin") if f.get("coin") in krypto.COINS else "bitcoin", max(0.0, menge), einstand,
+             1 if f.get("im_vermoegen") else 0))
     profil_id = int_oder_none(f.get("importprofil_id"))
     exe("DELETE FROM konto_importprofil WHERE konto_id = ? AND rolle = 'buchungen'", (kid,))
     if profil_id:
@@ -77,6 +94,8 @@ def neu():
         kid = _speichern(None)
         if kid:
             melde("Konto angelegt.")
+            if request.form.get("typ") == "krypto":
+                return redirect(url_for("krypto.index"))
             if request.form.get("typ") == "darlehen":
                 melde("Jetzt die Konditionen eintragen – daraus entstehen Tilgungsplan und Simulation.")
                 return redirect(url_for("darlehen.konditionen", kid=kid))

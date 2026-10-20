@@ -11,7 +11,9 @@
 <div class="kpis">
   <div class="kpi"><div class="label">Restschuld laut Plan</div><div class="wert">{{ k.restschuld|euro_rund }}</div>
     <div class="unter">{% if hat_buchungen %}laut Kontoauszug {{ (-konto_saldo)|euro_rund }}{% elif k.letzter_abgleich %}Abgleich vom {{ k.letzter_abgleich.datum|datum }}{% else %}aus den Konditionen berechnet{% endif %}</div></div>
-  <div class="kpi"><div class="label">Sollzins · Rate</div><div class="wert">{{ ('%.2f'|format(d.sollzins)).replace('.', ',') }} %</div><div class="unter">Rate {{ d.rate_cent|euro }}</div></div>
+  <div class="kpi"><div class="label">Sollzins · Rate</div><div class="wert">{{ ('%.2f'|format(d.sollzins)).replace('.', ',') }} %</div>
+    {% if bauspar_rate %}<div class="ratenliste"><div><span>Darlehen</span><b>{{ d.rate_cent|euro }}</b></div><div><span>Bausparen</span><b>{{ bauspar_rate|euro }}</b></div><div class="gesamt"><span>Gesamt</span><b>{{ (d.rate_cent + bauspar_rate)|euro }}</b></div></div>
+    {% else %}<div class="unter">Rate {{ d.rate_cent|euro }}</div>{% endif %}</div>
   <div class="kpi"><div class="label">Zinsbindung</div><div class="wert">{{ d.zinsbindung_bis|monat if d.zinsbindung_bis else '–' }}</div>
     <div class="unter">{% if d.zinsbindung_bis %}Rest dann {{ k.rest_zinsbindung|euro_rund }} · Zinsen bis dahin {{ k.zinsen_bis_zinsbindung|euro_rund }}{% endif %}</div></div>
   <div class="kpi"><div class="label">Schuldenfrei</div><div class="wert">{{ k.ende|monat_kurz if k.ende else '–' }}</div><div class="unter">bei gleichem Zins · noch {{ k.gesamt_zins|euro_rund }} Zinsen</div></div>
@@ -25,7 +27,7 @@
     <label class="check" style="flex:0 1 auto"><input type="checkbox" name="sim_jaehrlich" value="1" {{ 'checked' if a.sim_jaehrlich }}> jedes Jahr wiederholen</label>
     <button class="btn primaer" type="submit">Berechnen</button>
   </form>
-  {% if k.rahmen.rahmen %}<p class="leise">Vertraglicher Rahmen: {{ ('%g'|format(d.sondertilgung_prozent)).replace('.', ',') }} % = {{ k.rahmen.rahmen|euro_rund }} pro Jahr, {{ k.rahmen.genutzt|euro_rund }} genutzt, {{ k.rahmen.frei|euro_rund }} frei.</p>{% endif %}
+  {% if k.rahmen.rahmen %}<p class="leise">Vertraglicher Rahmen: {% if d.sondertilgung_max_cent %}höchstens {{ d.sondertilgung_max_cent|euro_rund }} pro Jahr ({{ ('%.1f'|format(d.sondertilgung_max_cent / d.ursprung_cent * 100)).replace('.', ',') }} % der Darlehenssumme){% else %}{{ ('%g'|format(d.sondertilgung_prozent)).replace('.', ',') }} % = {{ k.rahmen.rahmen|euro_rund }} pro Jahr{% endif %}, {{ k.rahmen.genutzt|euro_rund }} genutzt, {{ k.rahmen.frei|euro_rund }} frei.</p>{% endif %}
   {% if sim %}
   {% if sim.ueber_rahmen %}<div class="flash warn">Der Betrag übersteigt den freien Sondertilgungsrahmen ({{ sim.rahmen.frei|euro_rund }}) – mit der Bank klären.</div>{% endif %}
   <div class="scroll"><table class="tab vergleich" style="margin-top:8px">
@@ -40,6 +42,37 @@
   <p class="leise" style="margin-bottom:0">Annahme: Nach Ende der Zinsbindung gilt derselbe Zins weiter. Die Werte bis zum Zinsbindungsende sind daher die verlässlicheren.</p>
   {% endif %}
 </section>
+
+{% if d.zinsbindung_bis %}
+<section class="karte">
+  <div class="kopf"><h2 style="margin:0">Anschlussfinanzierung ab {{ (d.zinsbindung_bis)|monat }} simulieren</h2>
+    {% if d.anschluss_sollzins is not none and d.anschluss_rate_cent %}<span class="rechts tag ok">Planannahme: {{ ('%.2f'|format(d.anschluss_sollzins)).replace('.', ',') }} %, Rate {{ d.anschluss_rate_cent|euro }}</span>{% endif %}</div>
+  <p class="leise" style="margin:6px 0 10px">Restschuld bei Ende der Zinsbindung laut Plan: <b>{{ k.rest_zinsbindung|euro }}</b>. Trage Rate und Sollzins eines Angebots ein (z. B. Forward-Darlehen).</p>
+  <form method="get" class="formreihe">
+    <label class="feld" style="flex:0 1 180px">Sollzins in %<input type="text" name="anschluss_zins" inputmode="decimal" value="{{ a.anschluss_zins or (('%g'|format(d.anschluss_sollzins)).replace('.', ',') if d.anschluss_sollzins is not none else '') }}" placeholder="z. B. 3,6" required></label>
+    <label class="feld" style="flex:0 1 200px">Monatsrate<input type="text" name="anschluss_rate" inputmode="decimal" value="{{ a.anschluss_rate or (('%.2f'|format(d.anschluss_rate_cent / 100)).replace('.', ',') if d.anschluss_rate_cent else '') }}" placeholder="z. B. 1.100" required></label>
+    <button class="btn primaer" type="submit">Berechnen</button>
+  </form>
+  {% if sim_anschluss %}{% set s = sim_anschluss %}
+  {% if s.fehler %}<div class="flash bad" style="margin-top:10px">Die Rate deckt die Zinsen nicht – mindestens {{ s.mindestrate|euro }} nötig.</div>{% endif %}
+  <div class="scroll"><table class="tab vergleich" style="margin-top:10px">
+    <thead><tr><th style="padding-left:0"></th><th style="text-align:right">weiter wie bisher ({{ ('%.2f'|format(d.sollzins)).replace('.', ',') }} %, {{ d.rate_cent|euro_rund }})</th><th style="text-align:right">Anschluss ({{ ('%.2f'|format(s.zins)).replace('.', ',') }} %, {{ s.rate|euro_rund }})</th></tr></thead>
+    <tbody>
+      <tr><td style="padding-left:0">Schuldenfrei</td><td class="betrag">{{ s.ende_bisher|monat if s.ende_bisher else '–' }}</td><td class="betrag best">{{ s.ende_neu|monat if s.ende_neu else '–' }}</td></tr>
+      <tr><td style="padding-left:0">Laufzeit nach der Zinsbindung</td><td class="betrag">{{ s.monate_bisher // 12 }} J. {{ s.monate_bisher % 12 }} M.</td><td class="betrag">{{ s.monate_neu // 12 }} J. {{ s.monate_neu % 12 }} M.</td></tr>
+      <tr><td style="padding-left:0">Zinsen nach der Zinsbindung</td><td class="betrag">{{ s.zinsen_bisher|euro_rund }}</td><td class="betrag">{{ s.zinsen_neu|euro_rund }} <span class="leise">({{ '+' if s.zinsen_differenz > 0 }}{{ s.zinsen_differenz|euro_rund }})</span></td></tr>
+      <tr><td style="padding-left:0">Restschuld 10 Jahre später</td><td></td><td class="betrag">{{ s.rest_10|euro_rund }}</td></tr>
+      {% if s.anfangstilgung is not none %}<tr><td style="padding-left:0">Anfängliche Tilgung</td><td></td><td class="betrag">{{ ('%.2f'|format(s.anfangstilgung)).replace('.', ',') }} %</td></tr>{% endif %}
+    </tbody></table></div>
+  {% if darf_schreiben and not s.fehler %}
+  <form method="post" action="{{ url_for('darlehen.anschluss', kid=d.konto_id) }}" class="formreihe" style="margin-top:10px;align-items:center">{{ csrf() }}
+    <input type="hidden" name="zins" value="{{ s.zins }}"><input type="hidden" name="rate" value="{{ ('%.2f'|format(s.rate / 100)).replace('.', ',') }}">
+    <button class="btn" type="submit">Als Planannahme übernehmen</button>
+    <span class="leise klein">Tilgungsplan, Restschuld-Übersicht und Bausparvergleich rechnen dann ab {{ d.zinsbindung_bis|monat }} mit diesen Werten.</span></form>
+  {% endif %}{% endif %}
+  {% if darf_schreiben and d.anschluss_sollzins is not none %}<form method="post" action="{{ url_for('darlehen.anschluss', kid=d.konto_id) }}" style="margin-top:8px">{{ csrf() }}<button class="btn klein" name="aktion" value="zuruecksetzen">Planannahme entfernen</button></form>{% endif %}
+</section>
+{% endif %}
 
 <section class="karte">
   <div class="kopf"><h2 style="margin:0">Zugeordnete Zahlungen</h2>

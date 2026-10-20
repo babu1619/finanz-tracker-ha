@@ -1,0 +1,77 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf with context %}
+{% block titel %}Krypto{% endblock %}
+{% block inhalt %}
+<div class="kopf"><h1>Krypto</h1>
+  <span class="leise">{% if status.letzter_abruf %}Letzter Abruf: {{ status.letzter_abruf[:10]|datum }} um {{ status.letzter_abruf[11:16] }} Uhr{% else %}Noch keine Kurse abgerufen{% endif %} · automatisch jede Nacht um 4 Uhr</span>
+  <div class="rechts">{% if darf_schreiben %}<form method="post" action="{{ url_for('krypto.abrufen') }}" style="display:inline">{{ csrf() }}<button class="btn" type="submit">Jetzt abrufen</button></form>{% endif %}
+    {% if user.rolle == 'admin' %}<a class="btn primaer" href="{{ url_for('konten.neu', typ='krypto') }}">Bestand anlegen</a>{% endif %}</div></div>
+{% if status.meldung and status.meldung.startswith('Abruf fehlgeschlagen') %}<div class="flash warn">Letzter Versuch {{ (status.letzter_versuch or '')[:10]|datum }} {{ (status.letzter_versuch or '')[11:16] }}: {{ status.meldung }}. Der Home Assistant braucht für die Kurse Internetzugang.</div>{% endif %}
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Wert aller Bestände</div><div class="wert">{{ summe|euro_rund }}</div>
+    <div class="unter">{% if summe_vermoegen != summe %}davon {{ summe_vermoegen|euro_rund }} im Vermögen{% else %}zählt zum Vermögen{% endif %}</div></div>
+  {% for c, info in coins.items() %}{% set k = kurse[c] %}
+  <div class="kpi"><div class="label">{{ info.name }} ({{ info.kurz }})</div><div class="wert">{{ k.preis_cent|euro_rund if k else '–' }}</div>
+    <div class="unter">{% if k %}Kurs vom {{ k.datum|datum }}{% else %}noch kein Kurs{% endif %}</div></div>
+  {% endfor %}
+  {% if einstand %}<div class="kpi"><div class="label">Gewinn / Verlust</div><div class="wert {{ 'pos' if gewinn > 0 }}">{{ gewinn|euro_vz }}</div>
+    <div class="unter">Einstand {{ einstand|euro_rund }} · {{ ('%.1f'|format(gewinn / einstand * 100)).replace('.', ',') }} %</div></div>{% endif %}
+</div>
+
+<section class="karte">
+  <div class="krypto-kopf">
+    <h2 style="margin:0">Verlauf</h2>
+    <select id="kr-auswahl" aria-label="Was anzeigen">
+      {% for c, info in coins.items() %}<option value="coin:{{ c }}">Kurs {{ info.name }}</option>{% endfor %}
+      {% for b in bestaende %}<option value="bestand:{{ b.id }}" {{ 'selected' if loop.first }}>Wert {{ b.name }}</option>{% endfor %}
+    </select>
+    <div class="zeitwahl" role="group" aria-label="Zeitraum">{% for z, n in zeitraeume.items() %}<button type="button" class="btn klein {{ 'an' if z == '365' }}" data-tage="{{ z }}">{{ n }}</button>{% endfor %}</div>
+    <span class="rechts leise" id="kr-aenderung"></span>
+  </div>
+  <div class="dg-flaeche" id="kr-diagramm" style="margin-top:10px"></div>
+</section>
+
+<section class="karte ohne-rand">
+  <div class="kopf" style="padding:16px 16px 0"><h2 style="margin:0">Bestände</h2></div>
+  <div class="scroll"><table class="tab" style="min-width:640px">
+    <thead><tr><th>Bestand</th><th style="text-align:right">Menge</th><th style="text-align:right">Kurs</th><th style="text-align:right">Wert</th><th style="text-align:right">Gewinn</th><th>Vermögen</th></tr></thead>
+    <tbody>{% for b in bestaende %}<tr style="{{ 'opacity:.55' if not b.aktiv }}">
+      <td>{% if user.rolle == 'admin' %}<a href="{{ url_for('konten.bearbeiten', kid=b.id) }}"><b>{{ b.name }}</b></a>{% else %}<b>{{ b.name }}</b>{% endif %}<div class="leise">{{ b.coin_name }}</div></td>
+      <td class="betrag">{{ ('%.8f'|format(b.menge)).rstrip('0').rstrip('.').replace('.', ',') }} {{ b.kurz }}</td>
+      <td class="betrag">{{ b.kurs|euro if b.kurs else '–' }}{% if b.aenderung_tag is not none %}<div class="klein" style="color: {{ '#0A4D42' if b.aenderung_tag >= 0 else '#8A1F18' }}">{{ '+' if b.aenderung_tag >= 0 }}{{ ('%.1f'|format(b.aenderung_tag)).replace('.', ',') }} % zum Vortag</div>{% endif %}</td>
+      <td class="betrag"><b>{{ b.wert|euro if b.wert is not none else '–' }}</b></td>
+      <td class="betrag {{ 'pos' if b.gewinn and b.gewinn > 0 }}">{{ b.gewinn|euro_vz if b.gewinn is not none else '–' }}</td>
+      <td>{{ 'ja' if b.im_vermoegen else 'nein' }}</td></tr>
+    {% else %}<tr><td colspan="6" class="leer">Noch kein Bestand. {% if user.rolle == 'admin' %}<a href="{{ url_for('konten.neu', typ='krypto') }}">Bestand anlegen</a> (Typ „Krypto“, Coin und Menge eintragen).{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+<p class="leise klein">Kurse in Euro von CoinGecko (öffentliche Marktdaten, es werden keine eigenen Daten übertragen). Ob ein Bestand im Dashboard zum Vermögen zählt, stellst du im Konto ein.</p>
+
+<script src="{{ url_for('static', filename='diagramme.js') }}?v={{ version }}"></script>
+<script>
+(function () {
+  const auswahl = document.getElementById("kr-auswahl"), flaeche = document.getElementById("kr-diagramm");
+  const info = document.getElementById("kr-aenderung");
+  let tage = "365";
+  function laden() {
+    const [art, wert] = auswahl.value.split(":");
+    const p = new URLSearchParams({ tage });
+    if (art === "coin") p.set("coin", wert); else p.set("bestand", wert);
+    flaeche.innerHTML = '<p class="leise klein">lädt …</p>';
+    fetch("{{ url_for('krypto.verlauf') }}?" + p.toString()).then((r) => r.json()).then((d) => {
+      window.Diagramme.zeichne(flaeche, d, "flaeche", { hoehe: 280 });
+      info.textContent = d.aenderung === null || d.aenderung === undefined ? "" :
+        `${d.aenderung >= 0 ? "+" : ""}${d.aenderung.toLocaleString("de-DE", { maximumFractionDigits: 1 })} % im Zeitraum`;
+      info.style.color = d.aenderung >= 0 ? "#0A4D42" : "#8A1F18";
+    });
+  }
+  auswahl.addEventListener("change", laden);
+  document.querySelectorAll("[data-tage]").forEach((b) => b.addEventListener("click", () => {
+    tage = b.dataset.tage;
+    document.querySelectorAll("[data-tage]").forEach((x) => x.classList.toggle("an", x === b));
+    laden();
+  }));
+  laden();
+})();
+</script>
+{% endblock %}

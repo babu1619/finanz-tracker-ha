@@ -45,6 +45,8 @@ def main():
     config.HTTPS = zert is not None
     app = create_app()
     notfall_passwort()
+    from .services import krypto
+    krypto.starte_planer(app)  # Krypto-Kurse nachts um 4 Uhr
     if zert:
         from .server import starte_https
         logging.info("Finanz-Tracker %s startet mit HTTPS (%s-Zertifikat) auf Port %s, Daten in %s",

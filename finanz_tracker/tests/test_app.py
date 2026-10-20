@@ -226,6 +226,7 @@ class Ablauf(unittest.TestCase):
         self._v040(db)
         self._v050(db)
         self._v060(db)
+        self._v070(db)
 
         # 11. Import rückgängig
         lauf = db.execute("SELECT id FROM importlauf WHERE anzahl_neu = 2 ORDER BY id").fetchone()["id"]
@@ -1018,6 +1019,119 @@ class Ablauf(unittest.TestCase):
         # aufräumen
         db.execute("DELETE FROM buchung WHERE dedup_hash LIKE 'v060-%'")
         db.execute("DELETE FROM vertrag")
+        db.commit()
+
+    def _v070(self, db):
+        """0.7.0: Notiz im Prüf-Modus, Sondertilgung in €, Monatsrate inkl. Bausparen, Anschlussfinanzierung, Krypto."""
+        import json
+        from datetime import datetime, timedelta
+        from app.services import darlehen as dl, krypto
+
+        # --- Notiz im Prüf-Modus
+        bid = db.execute("INSERT INTO buchung (konto_id, buchungsdatum, betrag_cent, gegenpartei, verwendungszweck, partner_key, "
+                         "abrechnungsmonat, dedup_hash) VALUES (1, '2026-10-05', -2500, 'Blumenladen', '', 'blumenladen', "
+                         "'2026-10', 'v070-n')").lastrowid
+        db.commit()
+        html = self.get("/pruefen/?ansicht=einzeln")
+        self.assertIn('name="notiz"', html)
+        self.assertIn('name="notiz_', self.get("/pruefen/?ansicht=tabelle"))
+        kat = db.execute("SELECT id FROM kategorie WHERE pfad = 'Sonstiges'").fetchone()["id"]
+        self.post(f"/pruefen/{bid}", {"art": "kategorie", "kategorie_id": str(kat), "notiz": "Geburtstag Oma",
+                                      "abrechnungsmonat": "2026-10"}, von="/pruefen/?ansicht=einzeln")
+        self.assertEqual(db.execute("SELECT notiz FROM buchung WHERE id = ?", (bid,)).fetchone()[0], "Geburtstag Oma")
+        db.execute("DELETE FROM buchung WHERE id = ?", (bid,))
+        db.commit()
+
+        # --- Konditionen: Sondertilgung in €, Planannahme Anschlussfinanzierung
+        basis = {"ursprung": "300.000", "sollzins": "1,5", "rate": "1.200", "erste_rate": "2020-01", "zinsbindung_bis": "2030-12",
+                 "sondertilgung_prozent": "", "sondertilgung_max": "12.000", "erinnerung_monate": "24", "zahlkonto_id": "1"}
+        self.post("/darlehen/3/konditionen", basis, von="/darlehen/3/konditionen")
+        html = self.get("/darlehen/3")
+        self.assertIn("höchstens 12.000 € pro Jahr", html)
+        with self.app.app_context():
+            d = dl.lade(3)
+            self.assertEqual(dl.sonder_rahmen(d, 2026)["rahmen"], 1200000)
+            ohne = dl.plan(d)
+            sim = dl.simuliere_anschluss(d, 3.8, 150000)
+        self.assertEqual(sim["ende_bisher"], ohne[-1]["monat"])
+        self.assertGreater(sim["zinsen_neu"], sim["zinsen_bisher"])
+        self.assertGreater(sim["monate_bisher"], sim["monate_neu"])  # höhere Rate -> kürzer
+        html = self.get("/darlehen/3?anschluss_zins=3,8&anschluss_rate=1.500")
+        self.assertIn("Anschlussfinanzierung ab", html)
+        self.assertIn("Als Planannahme übernehmen", html)
+        self.post("/darlehen/3/anschluss", {"zins": "3.8", "rate": "1.500,00"}, von="/darlehen/3")
+        with self.app.app_context():
+            d = dl.lade(3)
+            mit = dl.plan(d)
+            self.assertEqual(mit[-1]["monat"], sim["ende_neu"])
+            nach = next(z for z in mit if z["monat"] == "2031-01")
+            self.assertEqual(nach["rate"], 150000)
+            termine = dl.restschuld_zu_zinsbindungsenden([d])
+        self.assertEqual([t["monat"] for t in termine], ["2030-12"])
+        self.assertEqual(termine[0]["summe"], sim["rest_zb"])
+        self.assertIn("Planannahme: 3,80 %", self.get("/darlehen/3"))
+        self.post("/darlehen/3/anschluss", {"aktion": "zuruecksetzen"}, von="/darlehen/3")
+        self.assertIsNone(db.execute("SELECT anschluss_sollzins FROM darlehen WHERE konto_id = 3").fetchone()[0])
+
+        # --- Darlehensübersicht: Monatsrate inkl. Bausparen, Restschuld zu den Zinsbindungsenden
+        html = self.get("/darlehen/")
+        self.assertIn("Monatsrate inkl. Bausparen", html)
+        self.assertIn("1.800 €", html)  # 1.200 Darlehen + 600 Bausparen
+        self.assertIn("Restschuld zu den Zinsbindungsenden", html)
+        self.assertIn("1.800,00 €", self.get("/darlehen/3"))
+
+        # --- Krypto: Konto anlegen, Kurse (Test-Abruf), Wert, Vermögen, Verlauf, nächtlicher Abruf
+        self.post("/konten/neu", {"name": "Bitcoin Wallet", "typ": "krypto", "coin": "bitcoin", "menge": "0,5",
+                                  "einstand": "20.000", "im_vermoegen": "1", "startsaldo": "0", "sichtbarkeit": "alle",
+                                  "aktiv": "1"}, von="/konten/neu?typ=krypto")
+        kid = db.execute("SELECT id FROM konto WHERE typ = 'krypto'").fetchone()["id"]
+        self.assertEqual(tuple(db.execute("SELECT coin, menge, einstand_cent, im_vermoegen FROM krypto WHERE konto_id = ?",
+                                          (kid,)).fetchone()), ("bitcoin", 0.5, 2000000, 1))
+        heute = krypto.jetzt().date()
+        ms = lambda tage: int(datetime(heute.year, heute.month, heute.day).timestamp() * 1000) - tage * 86400000  # noqa: E731
+
+        def holer(url):
+            if "market_chart" in url:
+                basis_preis = 60000 if "bitcoin" in url else 2500
+                return {"prices": [[ms(t), basis_preis + (10 - t) * 100] for t in range(10, 0, -1)]}
+            return {"bitcoin": {"eur": 62000.0}, "ethereum": {"eur": 2600.0}}
+        with self.app.app_context():
+            self.assertTrue(krypto.faellig())   # Bestand ohne Kurse -> sofort
+            erg = krypto.abrufen(holer)
+            self.assertTrue(erg["ok"])
+            self.assertEqual(krypto.wert(kid), 3100000)  # 0,5 × 62.000 €
+            self.assertFalse(krypto.faellig())  # gerade abgerufen
+            vier = datetime.combine(heute, datetime.min.time()).replace(hour=4, minute=5)
+            from app.db import setze_einstellung, commit
+            setze_einstellung("krypto_letzter_abruf", (vier - timedelta(days=1)).isoformat(timespec="minutes"))
+            setze_einstellung("krypto_letzter_versuch", (vier - timedelta(days=1)).isoformat(timespec="minutes"))
+            commit()
+            self.assertTrue(krypto.faellig(vier))
+            self.assertFalse(krypto.faellig(vier.replace(hour=3)))
+            fehler = krypto.abrufen(lambda url: (_ for _ in ()).throw(OSError("kein Netz")))
+            self.assertFalse(fehler["ok"])
+        html = self.get("/krypto/")
+        self.assertIn("Letzter Abruf", html)
+        self.assertIn("31.000,00 €", html)
+        self.assertIn("kein Netz", html)
+        d = self.c.get(f"/krypto/verlauf?bestand={kid}&tage=30").get_json()
+        self.assertEqual(d["reihen"][0]["werte"][-1], 3100000)
+        self.assertGreaterEqual(len(d["labels"]), 10)
+        d = self.c.get("/krypto/verlauf?coin=ethereum&tage=alle").get_json()
+        self.assertEqual(d["reihen"][0]["werte"][-1], 260000)
+        html = self.get("/?monat=2026-10")
+        self.assertIn("Bitcoin Wallet", html)
+        self.assertIn("31.000,00 €", html)
+        # nicht im Vermögen: Dashboard-Summe ohne Krypto
+        verm_mit = re.search(r"Vermögen auf den Konten</div><div class=\"wert\">([^<]+)", html).group(1)
+        self.post(f"/konten/{kid}", {"name": "Bitcoin Wallet", "typ": "krypto", "coin": "bitcoin", "menge": "0,5",
+                                     "startsaldo": "0", "sichtbarkeit": "alle", "aktiv": "1"}, von=f"/konten/{kid}")
+        html = self.get("/?monat=2026-10")
+        verm_ohne = re.search(r"Vermögen auf den Konten</div><div class=\"wert\">([^<]+)", html).group(1)
+        zahl = lambda t: int(t.replace(".", "").replace("€", "").replace("\u202f", "").replace("−", "-").strip())  # noqa: E731
+        self.assertEqual(zahl(verm_mit) - zahl(verm_ohne), 31000)
+        self.assertNotIn(str(kid), [o for o in re.findall(r'name="konto_id".*?</select>', self.get("/erfassen/"), re.S)[0].split('value="')[1:]])
+        db.execute("DELETE FROM konto WHERE id = ?", (kid,))
         db.commit()
 
     def test_csrf(self):

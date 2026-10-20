@@ -16,10 +16,17 @@
     <label class="feld">Erinnern vor Ende<select name="erinnerung_monate">{% for m in [12, 24, 36, 60] %}<option value="{{ m }}" {{ 'selected' if (d.erinnerung_monate if d else 24) == m }}>{{ m }} Monate</option>{% endfor %}</select></label>
   </div>
   <div class="formreihe">
-    <label class="feld">Sondertilgung pro Jahr in % der Darlehenssumme<input type="text" name="sondertilgung_prozent" inputmode="decimal" value="{{ ('%g'|format(d.sondertilgung_prozent)).replace('.', ',') if d and d.sondertilgung_prozent }}" placeholder="z. B. 5"></label>
+    <label class="feld">Max. Sondertilgung pro Jahr in %<input type="text" name="sondertilgung_prozent" id="st-prozent" inputmode="decimal" value="{{ ('%g'|format(d.sondertilgung_prozent)).replace('.', ',') if d and d.sondertilgung_prozent }}" placeholder="z. B. 5"></label>
+    <label class="feld">… oder in €<input type="text" name="sondertilgung_max" id="st-euro" inputmode="decimal" value="{{ ('%.2f'|format(d.sondertilgung_max_cent / 100)).replace('.', ',') if d and d.sondertilgung_max_cent }}" placeholder="z. B. 10.000"></label>
     <label class="feld">Immobilie<select name="immobilie_id"><option value="">–</option>{% for i in immobilien %}<option value="{{ i.id }}" {{ 'selected' if d and d.immobilie_id == i.id }}>{{ i.name }}</option>{% endfor %}</select></label>
     <label class="feld">Rate wird bezahlt von<select name="zahlkonto_id"><option value="">–</option>{% for z in zahlkonten %}<option value="{{ z.id }}" {{ 'selected' if d and d.zahlkonto_id == z.id }}>{{ z.name }}</option>{% endfor %}</select></label>
   </div>
+  <p class="leise klein" style="margin:0">Sondertilgung: Eine Angabe genügt, die andere rechnet sich aus dem Darlehensbetrag. Steht im Vertrag ein fester Euro-Betrag, gilt dieser.</p>
+  <fieldset class="formreihe" style="border:0;padding:0;margin:0">
+    <legend class="leise" style="margin-bottom:6px">Anschlussfinanzierung (optional, Planannahme nach Ende der Zinsbindung)</legend>
+    <label class="feld">Sollzins danach in %<input type="text" name="anschluss_sollzins" inputmode="decimal" value="{{ ('%g'|format(d.anschluss_sollzins)).replace('.', ',') if d and d.anschluss_sollzins is not none }}" placeholder="leer = gleicher Zins"></label>
+    <label class="feld">Monatsrate danach<input type="text" name="anschluss_rate" inputmode="decimal" value="{{ ('%.2f'|format(d.anschluss_rate_cent / 100)).replace('.', ',') if d and d.anschluss_rate_cent }}" placeholder="leer = gleiche Rate"></label>
+  </fieldset>
   <p class="leise" style="margin:0">Die Rate vom Girokonto ist eine Ausgabe (Kategorie z. B. „Wohnen › Darlehensrate“), keine Umbuchung. Das Darlehenskonto selbst zählt nie in Summen und Haupt-Dashboard.</p>
   <div class="formreihe"><button class="btn primaer" type="submit">Speichern</button></div>
 </form>

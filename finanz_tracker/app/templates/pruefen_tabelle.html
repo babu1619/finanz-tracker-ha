@@ -38,7 +38,7 @@
   <div class="karte ohne-rand">
     <div class="scroll"><table class="tab pruef-tab">
       <thead><tr><th class="fix-links" style="width:36px"><input type="checkbox" id="alle" aria-label="Alle auswählen"></th><th>Datum</th><th>Gegenpartei · Verwendungszweck</th><th style="text-align:right">Betrag</th>
-        <th style="min-width:230px">Kategorie</th><th>Person</th><th style="min-width:160px">Tags</th><th>Umbuchung</th></tr></thead>
+        <th style="min-width:230px">Kategorie</th><th>Person</th><th style="min-width:160px">Tags</th><th style="min-width:160px">Notiz</th><th>Umbuchung</th></tr></thead>
       <tbody>
       {% for r in rows %}{% set b = r.b %}{% set v = r.vorschlag %}
         <tr data-vorschlag="{{ 1 if v else 0 }}">
@@ -52,6 +52,7 @@
             {% if v %}<div class="quelle">{{ {'gedaechtnis':'aus früheren Buchungen','modell':'Lernmodell','regel':'Regel'}.get(v.quelle, 'bisher') }}{% if v.konfidenz and v.quelle == 'modell' %} · {{ (v.konfidenz * 100)|round|int }} %{% endif %}</div>{% endif %}</td>
           <td><select name="person_{{ b.id }}" data-feld="person" aria-label="Person"><option value="">–</option>{% for p in personen %}<option value="{{ p.id }}" {{ 'selected' if (v.person_id if v else b.person_id) == p.id }}>{{ p.name }}</option>{% endfor %}</select></td>
           <td><input type="text" name="tags_{{ b.id }}" data-feld="tags" value="{{ r.tags }}" list="tag-liste" placeholder="Tags" autocomplete="off" aria-label="Tags"></td>
+          <td><input type="text" name="notiz_{{ b.id }}" value="{{ b.notiz or '' }}" placeholder="Notiz" autocomplete="off" aria-label="Notiz"></td>
           <td><select name="gegen_{{ b.id }}" data-feld="gegen" aria-label="Umbuchung"><option value="">nein</option>{% for k in gegenkonten if k.id != b.konto_id %}<option value="{{ k.id }}">{{ k.name }}</option>{% endfor %}<option value="extern">außerhalb</option></select></td>
         </tr>
       {% endfor %}
