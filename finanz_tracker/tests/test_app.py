@@ -228,6 +228,7 @@ class Ablauf(unittest.TestCase):
         self._v060(db)
         self._v070(db)
         self._v071(db)
+        self._v080(db)
         self._v072(db)
 
         # 11. Import rückgängig
@@ -1125,16 +1126,55 @@ class Ablauf(unittest.TestCase):
         self.assertIn("Bitcoin Wallet", html)
         self.assertIn("31.000,00 €", html)
         # nicht im Vermögen: Dashboard-Summe ohne Krypto
-        verm_mit = re.search(r"Vermögen auf den Konten</div><div class=\"wert\">([^<]+)", html).group(1)
+        verm_mit = re.search(r"Vermögen <b class=\"mono\">([^<]+)", html).group(1)
         self.post(f"/konten/{kid}", {"name": "Bitcoin Wallet", "typ": "krypto", "coin": "bitcoin", "menge": "0,5",
                                      "startsaldo": "0", "sichtbarkeit": "alle", "aktiv": "1"}, von=f"/konten/{kid}")
         html = self.get("/?monat=2026-10")
-        verm_ohne = re.search(r"Vermögen auf den Konten</div><div class=\"wert\">([^<]+)", html).group(1)
+        verm_ohne = re.search(r"Vermögen <b class=\"mono\">([^<]+)", html).group(1)
         zahl = lambda t: int(t.replace(".", "").replace("€", "").replace("\u202f", "").replace("−", "-").strip())  # noqa: E731
         self.assertEqual(zahl(verm_mit) - zahl(verm_ohne), 31000)
         self.assertNotIn(str(kid), [o for o in re.findall(r'name="konto_id".*?</select>', self.get("/erfassen/"), re.S)[0].split('value="')[1:]])
         db.execute("DELETE FROM konto WHERE id = ?", (kid,))
         db.commit()
+
+    def _v080(self, db):
+        """0.8.0: Dashboard im Stil von Sure – Nettovermögen, Cashflow-Sankey, Vermögensaufstellung, Einklappen."""
+        import json
+        from app.services import vermoegen as vm
+        html = self.get("/?monat=2026-10")
+        for bereich in ("nettovermoegen", "pruefen", "cashflow", "ausgaben", "sparen", "bilanz", "budgets", "verlauf", "konten"):
+            self.assertIn(f'data-bereich="{bereich}"', html)
+        self.assertIn('aria-controls="b-cashflow"', html)
+        self.assertIn("dashboard.js", html)
+        daten = json.loads(re.search(r'<script type="application/json" id="dash-daten">(.*?)</script>', html, re.S).group(1))
+        nv = daten["nv"]
+        self.assertEqual(len(nv["labels"]), len(nv["netto"]))
+        self.assertGreaterEqual(len(nv["labels"]), 12)
+        for a, p, n in zip(nv["aktiva"], nv["passiva"], nv["netto"]):
+            self.assertEqual(a - p, n)
+        for schl in ("monat", "jahr", "zwoelf"):
+            cf = daten["cashflow"][schl]
+            # Sankey ist ausgeglichen: Quellen = Ziele (Gespart bzw. „Aus Ersparnissen“ gleicht aus)
+            self.assertEqual(sum(x["wert"] for x in cf["quellen"]), sum(x["wert"] for x in cf["ziele"]))
+            self.assertTrue(all(x["farbe"].startswith("#") for x in cf["quellen"] + cf["ziele"]))
+            self.assertIn("/buchungen", cf["url"])
+        # Farbe einer Kategorie ist im Ring und im Sankey gleich
+        ring = dict(zip([r["id"] for r in daten["ausgaben"]["reihen"]], daten["ausgaben"]["farben"]))
+        for x in daten["cashflow"]["monat"]["ziele"]:
+            if x["id"] in ring:
+                self.assertEqual(ring[x["id"]], x["farbe"])
+        with self.app.app_context():
+            self.assertEqual(vm._monatsende("2026-02"), "2026-02-28")
+            self.assertEqual(vm._monatsende("2026-12"), "2026-12-31")
+            hist = {"monate": ["2026-01", "2026-02"], "konten": [
+                {"id": 1, "name": "Giro", "typ": "giro", "gruppe": "Girokonten", "seite": "aktiva", "werte": [100, -50], "link": None},
+                {"id": 2, "name": "Kredit", "typ": "darlehen", "gruppe": "Darlehen", "seite": "passiva", "werte": [-1000, -900], "link": None}]}
+            n = vm.nettovermoegen(hist)
+            self.assertEqual(n["netto"], [-900, -950])
+            bil = vm.bilanz(hist)
+            # Girokonto im Minus wandert auf die Schuldenseite
+            self.assertEqual([g["name"] for g in bil["passiva"]["gruppen"]], ["Darlehen", "Girokonten"])
+            self.assertEqual(bil["passiva"]["summe"], 950)
 
     def _v071(self, db):
         """0.7.1: Restschuld abzüglich Bausparguthaben, Anschluss-Simulation in der Zinsbindungs-Tabelle."""

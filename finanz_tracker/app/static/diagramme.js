@@ -96,12 +96,13 @@
   // ------------------------------------------------------------------ Achsen-Diagramme
   function kartesisch(box, d, typ, optionen) {
     const reihen = d.reihen, labels = d.labels, n = labels.length;
-    const cols = farben(reihen);
+    const cols = optionen.farben || farben(reihen);
     const W = Math.max(box.clientWidth || 600, 280), H = optionen.hoehe || 260;
-    const links = 58, rechts = 10, oben = 12, unten = n > 8 ? 46 : 30;
+    const links = optionen.links || 58, rechts = 10, oben = 12, unten = n > 8 ? 46 : 30;
     const pw = W - links - rechts, ph = H - oben - unten;
     const gestapelt = typ === "gestapelt";
     let min = 0, max = 0;
+    if (optionen.ohneNull && !gestapelt) { min = Infinity; max = -Infinity; }
     for (let i = 0; i < n; i++) {
       if (gestapelt) {
         let p = 0, m = 0;
@@ -151,12 +152,16 @@
         const pkt = r.werte.map((v, i) => [xm(i), y(v)]);
         const pfad = pkt.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
         if (typ === "flaeche" && pkt.length) {
-          el("path", { d: `${pfad} L${pkt[pkt.length - 1][0]} ${y(Math.max(sk.lo, 0))} L${pkt[0][0]} ${y(Math.max(sk.lo, 0))} Z`,
-                       fill: cols[k], "fill-opacity": r.vorjahr ? 0.08 : 0.16 }, svg);
+          const boden = y(optionen.ohneNull ? sk.lo : Math.max(sk.lo, 0));
+          const gid = "dg-g" + Math.random().toString(36).slice(2, 8);
+          const grad = el("linearGradient", { id: gid, x1: 0, y1: 0, x2: 0, y2: 1 }, el("defs", {}, svg));
+          el("stop", { offset: "0%", "stop-color": cols[k], "stop-opacity": r.vorjahr ? 0.1 : 0.28 }, grad);
+          el("stop", { offset: "100%", "stop-color": cols[k], "stop-opacity": 0.02 }, grad);
+          el("path", { d: `${pfad} L${pkt[pkt.length - 1][0]} ${boden} L${pkt[0][0]} ${boden} Z`, fill: `url(#${gid})` }, svg);
         }
         el("path", { d: pfad, fill: "none", stroke: cols[k], "stroke-width": r.vorjahr ? 1.6 : 2.2,
                      "stroke-dasharray": r.vorjahr ? "5 4" : "", "stroke-linejoin": "round" }, svg);
-        if (n <= 24) pkt.forEach((p) => el("circle", { cx: p[0], cy: p[1], r: 2.6, fill: cols[k] }, svg));
+        if (n <= 24 && !optionen.ohnePunkte) pkt.forEach((p) => el("circle", { cx: p[0], cy: p[1], r: 2.6, fill: cols[k] }, svg));
       });
     }
     // Trefferflächen je Spalte für den Tooltip
@@ -179,7 +184,7 @@
     }
     svg.addEventListener("pointerleave", () => { markierung.setAttribute("visibility", "hidden"); tooltip(box).hidden = true; });
     box.append(svg);
-    legende(box, reihen, cols, optionen);
+    if (!optionen.ohneLegende) legende(box, reihen, cols, optionen);
   }
 
   function summen(d) {
@@ -212,8 +217,8 @@
   function ring(box, d, typ, optionen) {
     const s = summen(d).map((v) => Math.max(0, v));
     const gesamt = s.reduce((a, b) => a + b, 0);
-    const cols = farben(d.reihen);
-    const W = 220, R = 100, r0 = typ === "donut" ? 62 : 0;
+    const cols = optionen.farben || farben(d.reihen);
+    const W = optionen.groesse || 220, R = W / 2 - 10, r0 = typ === "donut" ? R * 0.66 : 0;
     const wrap = html("div", "dg-ring");
     const svg = el("svg", { viewBox: `0 0 ${W} ${W}`, width: W, height: W, role: "img" });
     let winkel = -Math.PI / 2;
@@ -236,16 +241,22 @@
         [`${zahl(v, d.einheit)} · ${((v / gesamt) * 100).toLocaleString("de-DE", { maximumFractionDigits: 1 })} %`]]);
       seg.addEventListener("pointermove", zeige);
       seg.addEventListener("pointerdown", zeige);
+      seg.dataset.index = i;
+      if (optionen.hover) {
+        seg.addEventListener("pointerenter", () => optionen.hover(i));
+        seg.addEventListener("pointerleave", () => optionen.hover(null));
+      }
       if (optionen.link && d.reihen[i].id !== "sonstige") { seg.style.cursor = "pointer"; seg.addEventListener("click", () => optionen.link(d.reihen[i])); }
       winkel += a;
     });
     svg.addEventListener("pointerleave", () => { tooltip(box).hidden = true; });
     if (r0) {
       el("text", { x: c, y: c - 2, "text-anchor": "middle", class: "dg-mitte" }, svg).textContent = kurz(gesamt, d.einheit);
-      el("text", { x: c, y: c + 16, "text-anchor": "middle", class: "dg-achse" }, svg).textContent = "gesamt";
+      el("text", { x: c, y: c + 16, "text-anchor": "middle", class: "dg-achse" }, svg).textContent = optionen.mitteText || "gesamt";
     }
     wrap.append(svg);
     box.append(wrap);
+    if (optionen.ohneLegende) return;
     const proz = s.map((v) => (gesamt ? Math.round((v / gesamt) * 100) + " %" : ""));
     legende(box, d.reihen, cols, Object.assign({}, optionen, { prozente: proz, immerLegende: true }));
   }
@@ -327,9 +338,102 @@
     box.append(wrap);
   }
 
+
+  // ------------------------------------------------------------------ Sankey (Cashflow)
+  // d = {quellen:[{id,name,wert,farbe}], ziele:[{id,name,wert,farbe}], mitte: "Einnahmen"}
+  function sankey(box, d, optionen) {
+    const quellen = d.quellen.filter((x) => x.wert > 0), ziele = d.ziele.filter((x) => x.wert > 0);
+    const gesamt = Math.max(quellen.reduce((a, x) => a + x.wert, 0), ziele.reduce((a, x) => a + x.wert, 0));
+    if (!gesamt) { box.append(html("p", "leer", "Keine Einnahmen oder Ausgaben in diesem Zeitraum.")); return; }
+    const W = Math.max(box.clientWidth || 640, 300);
+    const schmal = W < 600;
+    const kb = schmal ? 8 : 12;                      // Knotenbreite
+    const lblL = schmal ? 92 : 190, lblR = schmal ? 92 : 210;
+    const xL = lblL, xR = W - lblR - kb, xM = Math.round((xL + xR) / 2 - kb / 2);
+    const oben = 30, unten = 8, luecke = schmal ? 8 : 12, slotMin = schmal ? 30 : 34;
+    const n = Math.max(quellen.length, ziele.length, 1);
+    const ziel = Math.max(schmal ? 260 : 300, n * (slotMin + luecke));
+    const k = (ziel - (n - 1) * luecke) / gesamt;
+    function layout(liste) {
+      let yy = 0;
+      const pos = liste.map((x) => {
+        const h = Math.max(3, x.wert * k), slot = Math.max(h, slotMin);
+        const p = { x, h, y: yy + (slot - h) / 2, slot, slotY: yy };
+        yy += slot + luecke;
+        return p;
+      });
+      return { pos, hoehe: yy - luecke };
+    }
+    const L = layout(quellen), R = layout(ziele);
+    const hM = gesamt * k;
+    const innen = Math.max(L.hoehe, R.hoehe, hM);
+    const H = oben + innen + unten;
+    const versatz = (h) => oben + (innen - h) / 2;
+    const yL = versatz(L.hoehe), yR = versatz(R.hoehe), yM = versatz(hM);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", height: H, role: "img", class: "dg-sankey" });
+    const band = (x0, a0, b0, x1, a1, b1) => {
+      const xm = (x0 + x1) / 2;
+      return `M${x0} ${a0} C${xm} ${a0} ${xm} ${a1} ${x1} ${a1} L${x1} ${b1} C${xm} ${b1} ${xm} ${b0} ${x0} ${b0} Z`;
+    };
+    const proz = (v) => ((v / gesamt) * 100).toLocaleString("de-DE", { maximumFractionDigits: v / gesamt < 0.1 ? 1 : 0 }) + " %";
+    const kuerze = (t) => (schmal && t.length > 13 ? t.slice(0, 12) + "…" : t);
+    const tipp = (x, e) => zeigeTooltip(box, e.clientX, e.clientY, [[x.name, x.farbe, true], [`${zahl(x.wert, "€")} · ${proz(x.wert)}`]]);
+    const gLinks = el("g", {}, svg), gKnoten = el("g", {}, svg);
+    const elemente = [];
+    function seite(lay, y0, links) {
+      let cursor = yM;
+      lay.pos.forEach((p) => {
+        const th = p.x.wert * k;
+        const yn = y0 + p.y;
+        const pfad = links
+          ? band(xL + kb, yn, yn + th, xM, cursor, cursor + th)
+          : band(xM + kb, cursor, cursor + th, xR, yn, yn + th);
+        const b = el("path", { d: pfad, fill: p.x.farbe, "fill-opacity": 0.22, class: "dg-band" }, gLinks);
+        const r = el("rect", { x: links ? xL : xR, y: yn, width: kb, height: Math.max(p.h, 2), rx: 2, fill: p.x.farbe }, gKnoten);
+        const lx = links ? xL - 8 : xR + kb + 8, anker = links ? "end" : "start";
+        const ly = y0 + p.slotY + p.slot / 2;
+        const t1 = el("text", { x: lx, y: ly - 3, "text-anchor": anker, class: "dg-sk-name" }, gKnoten);
+        t1.textContent = kuerze(p.x.name);
+        const t2 = el("text", { x: lx, y: ly + 12, "text-anchor": anker, class: "dg-sk-wert" }, gKnoten);
+        t2.textContent = `${kurz(p.x.wert, "€")} · ${proz(p.x.wert)}`;
+        const ttl = el("title", {}, t1); ttl.textContent = p.x.name;
+        [b, r, t1, t2].forEach((n) => {
+          n.addEventListener("pointermove", (e) => { tipp(p.x, e); b.setAttribute("fill-opacity", 0.45); });
+          n.addEventListener("pointerleave", () => { tooltip(box).hidden = true; b.setAttribute("fill-opacity", 0.22); });
+          if (optionen.link && p.x.id && !["sonstige", "gespart", "reserve"].includes(p.x.id)) {
+            n.style.cursor = "pointer";
+            n.addEventListener("click", () => optionen.link(p.x, links ? "quelle" : "ziel"));
+          }
+        });
+        elemente.push(b);
+        cursor += th;
+      });
+    }
+    seite(L, yL, true);
+    seite(R, yR, false);
+    el("rect", { x: xM, y: yM, width: kb, height: hM, rx: 2, fill: optionen.mitteFarbe || "#2E3C37" }, gKnoten);
+    const tm = el("text", { x: xM + kb / 2, y: yM - 10, "text-anchor": "middle", class: "dg-sk-name" }, gKnoten);
+    tm.textContent = `${d.mitte || "Einnahmen"} ${kurz(gesamt, "€")}`;
+    box.append(svg);
+  }
+
+  // ------------------------------------------------------------------ Mini-Verlauf (Sparkline)
+  function spark(knoten, werte, farbe) {
+    knoten.innerHTML = "";
+    if (!werte || werte.length < 2) return;
+    const W = 84, H = 26, min = Math.min(...werte), max = Math.max(...werte), sp = max - min || 1;
+    const pkt = werte.map((v, i) => [(i / (werte.length - 1)) * (W - 2) + 1, H - 2 - ((v - min) / sp) * (H - 4)]);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, "aria-hidden": "true" });
+    const f = farbe || (werte[werte.length - 1] >= werte[0] ? "#0F6B5C" : "#B5475A");
+    el("path", { d: pkt.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" "),
+                 fill: "none", stroke: f, "stroke-width": 1.6, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+    knoten.append(svg);
+  }
+
   function zeichne(box, d, typ, optionen) {
     optionen = optionen || {};
     box.innerHTML = "";
+    if (typ === "sankey") return sankey(box, d, optionen);
     if (!d || !d.reihen || !d.reihen.length || d.reihen.every((r) => r.werte.every((v) => !v))) {
       box.append(html("p", "leer", "Keine Daten für diese Auswahl und diesen Zeitraum."));
       return;
@@ -346,5 +450,5 @@
     return kartesisch(box, d, "balken", optionen);
   }
 
-  window.Diagramme = { zeichne, zahl };
+  window.Diagramme = { zeichne, zahl, kurz, spark, FARBEN };
 })();

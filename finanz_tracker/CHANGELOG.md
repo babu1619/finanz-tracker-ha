@@ -1,5 +1,15 @@
 # Änderungen
 
+## 0.8.0 – November 2026
+
+- Dashboard neu gestaltet, angelehnt an die Finanz-App Sure: ruhige Karten mit großen Zahlen, Diagramme aus der eigenen Bibliothek (weiterhin ohne Internet)
+- Nettovermögen über die Zeit: Vermögen minus Schulden zum Monatsende, als Verlauf mit Zeitraumwahl (6 Monate bis alles) und Veränderung in € und %. Rekonstruiert aus Startsaldo und Buchungen; Depot mit der jeweils letzten Rendite-Eintragung, Krypto mit heutiger Menge × damaligem Kurs, Darlehen ohne Buchungen laut Tilgungsplan, Bausparguthaben laut Stand bzw. Prognose
+- Cashflow als Sankey-Diagramm: Einnahmen je Kategorie fließen in die Ausgabenkategorien und „Gespart“ (bei einem Minus kommt „Aus Ersparnissen“ dazu); wählbar Monat, laufendes Jahr oder 12 Monate, ein Klick auf eine Kategorie öffnet die Buchungen
+- Ausgaben nach Kategorie als Ring neben der aufklappbaren Kategorienliste; gleiche Farben je Kategorie in Ring, Liste und Sankey, Hervorhebung beim Überfahren
+- Vermögensaufstellung: Vermögen und Schulden getrennt, gruppiert nach Kontoart mit Anteilsbalken, Anteil je Gruppe, 12-Monats-Verlauf je Gruppe und Konto; Gruppen aufklappbar. Girokonten im Minus zählen zu den Schulden
+- Alle Bereiche des Dashboards lassen sich ein- und ausklappen (eingeklappt bleibt eine Kurzinfo sichtbar), dazu „Alle einklappen“/„Alle ausklappen“. Der Zustand wird je Gerät im Browser gespeichert
+- Einnahmen und Ausgaben der letzten 12 Monate als Säulendiagramm mit Tooltip; Klick auf einen Monat wechselt dorthin
+
 ## 0.7.1 – Oktober 2026
 
 - Darlehen: Restschuld gesamt abzüglich des angesparten Bausparguthabens (Restschuld, − Bausparguthaben, Netto); in der Tabelle der Zinsbindungsenden zusätzlich Bausparguthaben und Netto je Termin

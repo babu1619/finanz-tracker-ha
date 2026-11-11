@@ -1,13 +1,58 @@
-from flask import Blueprint, render_template, request
+from flask import Blueprint, render_template, request, url_for
 
 from .. import auth
 from ..db import q
-from ..services import budgets, depot, importer, krypto, ruecklagen, statistik, umbuchungen, vertraege
+from ..services import budgets, depot, importer, krypto, ruecklagen, statistik, umbuchungen, vermoegen as vm, vertraege
 from ..db import commit
 from ..util import monat_plus
 from . import monat_param, int_oder_none
 
 bp = Blueprint("dashboard", __name__)
+
+# Kategorienfarben für Ring, Liste und Sankey (gleiche Kategorie = gleiche Farbe)
+FARBEN_AUSGABEN = ["#3B6FB6", "#C98A12", "#B5475A", "#7A5BA8", "#2F9C9C", "#A0662E", "#D16BA5", "#6A8F3A",
+                   "#44546A", "#8A9A2B", "#5E6B66", "#E07A3F"]
+FARBEN_EINNAHMEN = ["#0F6B5C", "#2F9C9C", "#6A8F3A", "#3B8F6E", "#8A9A2B", "#44546A"]
+FARBE_WEITERE, FARBE_OHNE, FARBE_GESPART, FARBE_RESERVE = "#AEB8B4", "#E0A93B", "#0A4D42", "#C98A12"
+ZEITRAEUME_NV = {"6": "6 M", "12": "1 J", "36": "3 J", "60": "5 J", "alle": "Alles"}
+
+
+def _farbtabelle(kat: list) -> dict:
+    farben = {}
+    for i, k in enumerate(x for x in kat if x["id"]):
+        farben[k["id"]] = FARBEN_AUSGABEN[i % len(FARBEN_AUSGABEN)]
+    return farben
+
+
+def _faerben(cf: dict, farben: dict) -> dict:
+    frei = [f for f in FARBEN_AUSGABEN if f not in farben.values()] or FARBEN_AUSGABEN
+    j = 0
+    for i, x in enumerate(cf["quellen"]):
+        x["farbe"] = FARBE_RESERVE if x["id"] == "reserve" else FARBE_WEITERE if x["id"] == "sonstige" else \
+            FARBEN_EINNAHMEN[i % len(FARBEN_EINNAHMEN)]
+    for x in cf["ziele"]:
+        if x["id"] == "gespart":
+            x["farbe"] = FARBE_GESPART
+        elif x["id"] == "sonstige":
+            x["farbe"] = FARBE_WEITERE
+        elif x["id"] is None:
+            x["farbe"] = FARBE_OHNE
+        elif x["id"] in farben:
+            x["farbe"] = farben[x["id"]]
+        else:
+            x["farbe"] = frei[j % len(frei)]
+            j += 1
+    return cf
+
+
+def _bereich_link(cf: dict, person_id) -> dict:
+    """Basis-URL für Klicks im Sankey: Buchungen des Zeitraums."""
+    if cf["von"] == cf["bis"]:
+        cf["url"] = url_for("buchungen.liste", monat=cf["von"], person=person_id)
+    else:
+        bis = vm._monatsende(cf["bis"])
+        cf["url"] = url_for("buchungen.liste", monat="alle", von=cf["von"] + "-01", bis=bis, person=person_id)
+    return cf
 
 
 @bp.route("/")
@@ -74,10 +119,34 @@ def index():
     commit()
     vt_hinweise = [v for v in vertraege.liste(konten) if v["aenderung"] or v["ausgeblieben"]]
     max_kat = max([k["betrag"] for k in kat] + [1])
+    # 0.8.0: Nettovermögen, Cashflow, Vermögensaufstellung
+    farben = _farbtabelle(kat)
+    for k in kat:
+        k["farbe"] = farben.get(k["id"], FARBE_OHNE)
+    hist = vm.verlauf_je_konto(sichtbar)
+    nv = vm.nettovermoegen(hist)
+    bil = vm.bilanz(hist)
+    cashflow = {
+        "monat": _bereich_link(_faerben(vm.cashflow(konten, monat, monat, person_id), farben), person_id),
+        "jahr": _bereich_link(_faerben(vm.cashflow(konten, monat[:4] + "-01", monat, person_id), farben), person_id),
+        "zwoelf": _bereich_link(_faerben(vm.cashflow(konten, monat_plus(monat, -11), monat, person_id), farben),
+                                person_id),
+    }
+    dash = {
+        "nv": {"labels": nv["monate"], "netto": nv["netto"], "aktiva": nv["aktiva"], "passiva": nv["passiva"]},
+        "cashflow": cashflow,
+        "ausgaben": {"labels": [monat], "reihen": [{"id": k["id"], "name": k["name"], "werte": [k["betrag"]]} for k in kat],
+                     "farben": [k["farbe"] for k in kat], "einheit": "€",
+                     "url": url_for("buchungen.liste", monat=monat, art="ausgabe", person=person_id)},
+        "verlauf": {"labels": [v["monat"] for v in verlauf], "einheit": "€",
+                    "reihen": [{"name": "Einnahmen", "werte": [v["einnahmen"] for v in verlauf]},
+                               {"name": "Ausgaben", "werte": [v["ausgaben"] for v in verlauf]}]},
+    }
     return render_template(
         "dashboard.html", monat=monat, vor=monat_plus(monat, -1), nach=monat_plus(monat, 1),
         werte=werte, vormonat=vormonat, kat=kat, max_kat=max_kat, verlauf=verlauf, max_verlauf=max_verlauf,
         konten=konto_rows, vermoegen=vermoegen, ohne_kat=ohne_kat, ungeprueft=ungeprueft,
         umbuchungs_vorschlaege=len(umbuchungen.offene_vorschlaege(sichtbar)), saldo_warnungen=saldo_warnungen,
         personen=personen, person_id=person_id, bue=bue, budget_top=budget_top, spar=spar, ziele=ziele,
-        vt_hinweise=vt_hinweise, darlehen_hinweise=darlehen_hinweise(sichtbar))
+        vt_hinweise=vt_hinweise, darlehen_hinweise=darlehen_hinweise(sichtbar),
+        nv=nv, bilanz=bil, dash=dash, zeitraeume_nv=ZEITRAEUME_NV)

@@ -1,6 +1,6 @@
 # Finanz-Tracker – Installation auf dem Home Assistant Green
 
-Version 0.7.1 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
+Version 0.8.0 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
 Die App ist eine eigenständige, verschlüsselte Webseite (https, Port 8099), die sich auf dem Handy als App installieren lässt;
 Home Assistant dient nur als Host.
 Alle Daten liegen lokal in der SQLite-Datenbank des Add-ons und sind Teil der Home-Assistant-Backups.
@@ -120,6 +120,8 @@ genug Regeln und Erfahrungswerte für eine weitgehend automatische Zuordnung.
 
 ## Neu in 0.4.0 – kurz erklärt
 
+- **Dashboard (ab 0.8.0):** Nettovermögen mit Verlauf, Cashflow als Sankey-Diagramm, Ausgaben als Ring, Vermögensaufstellung
+  nach Kontoart. Jeder Bereich lässt sich über seine Überschrift ein- und ausklappen; der Zustand bleibt auf dem Gerät gespeichert.
 - **Dashboard verlinkt:** Ein Tipp auf „Einnahmen“ oder „Ausgaben“ öffnet die passenden Buchungen des Monats, ein Tipp
   auf ein Konto dessen Buchungen. Hauptkategorien mit Unterkategorien haben links einen Pfeil zum Aufklappen.
 - **Depot ohne Auszug:** Konto vom Typ „Depot“ anlegen, dann unter Konten → „Rendite & Einträge“ (oder im Dashboard
