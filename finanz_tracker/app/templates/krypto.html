@@ -22,8 +22,11 @@
   <div class="krypto-kopf">
     <h2 style="margin:0">Verlauf</h2>
     <select id="kr-auswahl" aria-label="Was anzeigen">
+      {% set n_aktiv = bestaende|selectattr('aktiv')|list|length %}
+      {% if n_aktiv %}<option value="gesamt:summe" selected>Gesamtwert aller Bestände</option>
+      {% if n_aktiv > 1 %}<option value="gesamt:einzeln">Gesamtwert und einzelne Bestände</option>{% endif %}{% endif %}
+      {% for b in bestaende %}<option value="bestand:{{ b.id }}">Wert {{ b.name }}</option>{% endfor %}
       {% for c, info in coins.items() %}<option value="coin:{{ c }}">Kurs {{ info.name }}</option>{% endfor %}
-      {% for b in bestaende %}<option value="bestand:{{ b.id }}" {{ 'selected' if loop.first }}>Wert {{ b.name }}</option>{% endfor %}
     </select>
     <div class="zeitwahl" role="group" aria-label="Zeitraum">{% for z, n in zeitraeume.items() %}<button type="button" class="btn klein {{ 'an' if z == '365' }}" data-tage="{{ z }}">{{ n }}</button>{% endfor %}</div>
     <span class="rechts leise" id="kr-aenderung"></span>
@@ -38,7 +41,7 @@
     <tbody>{% for b in bestaende %}<tr style="{{ 'opacity:.55' if not b.aktiv }}">
       <td>{% if user.rolle == 'admin' %}<a href="{{ url_for('konten.bearbeiten', kid=b.id) }}"><b>{{ b.name }}</b></a>{% else %}<b>{{ b.name }}</b>{% endif %}<div class="leise">{{ b.coin_name }}</div></td>
       <td class="betrag">{{ ('%.8f'|format(b.menge)).rstrip('0').rstrip('.').replace('.', ',') }} {{ b.kurz }}</td>
-      <td class="betrag">{{ b.kurs|euro if b.kurs else '–' }}{% if b.aenderung_tag is not none %}<div class="klein" style="color: {{ '#0A4D42' if b.aenderung_tag >= 0 else '#8A1F18' }}">{{ '+' if b.aenderung_tag >= 0 }}{{ ('%.1f'|format(b.aenderung_tag)).replace('.', ',') }} % zum Vortag</div>{% endif %}</td>
+      <td class="betrag">{{ b.kurs|euro if b.kurs else '–' }}{% if b.aenderung_tag is not none %}<div class="klein" style="color: {{ 'var(--gut)' if b.aenderung_tag >= 0 else 'var(--bad)' }}">{{ '+' if b.aenderung_tag >= 0 }}{{ ('%.1f'|format(b.aenderung_tag)).replace('.', ',') }} % zum Vortag</div>{% endif %}</td>
       <td class="betrag"><b>{{ b.wert|euro if b.wert is not none else '–' }}</b></td>
       <td class="betrag {{ 'pos' if b.gewinn and b.gewinn > 0 }}">{{ b.gewinn|euro_vz if b.gewinn is not none else '–' }}</td>
       <td>{{ 'ja' if b.im_vermoegen else 'nein' }}</td></tr>
@@ -56,13 +59,13 @@
   function laden() {
     const [art, wert] = auswahl.value.split(":");
     const p = new URLSearchParams({ tage });
-    if (art === "coin") p.set("coin", wert); else p.set("bestand", wert);
+    if (art === "coin") p.set("coin", wert); else if (art === "gesamt") p.set("gesamt", wert); else p.set("bestand", wert);
     flaeche.innerHTML = '<p class="leise klein">lädt …</p>';
     fetch("{{ url_for('krypto.verlauf') }}?" + p.toString()).then((r) => r.json()).then((d) => {
-      window.Diagramme.zeichne(flaeche, d, "flaeche", { hoehe: 280 });
+      window.Diagramme.zeichne(flaeche, d, d.reihen.length > 1 ? "linie" : "flaeche", { hoehe: 280, ohneNull: true });
       info.textContent = d.aenderung === null || d.aenderung === undefined ? "" :
         `${d.aenderung >= 0 ? "+" : ""}${d.aenderung.toLocaleString("de-DE", { maximumFractionDigits: 1 })} % im Zeitraum`;
-      info.style.color = d.aenderung >= 0 ? "#0A4D42" : "#8A1F18";
+      info.style.color = d.aenderung >= 0 ? "var(--gut)" : "var(--bad)";
     });
   }
   auswahl.addEventListener("change", laden);

@@ -4,8 +4,8 @@
 <div class="kopf"><h1>Vorschau</h1><span class="leise">{{ dateiname }} · Konto <b>{{ konto.name }}</b> · Profil {{ vorb.profil.name }}</span></div>
 <div class="kpis">
   <div class="kpi"><div class="label">neue Buchungen</div><div class="wert pos">{{ vorb.neu }}</div></div>
-  <div class="kpi"><div class="label">schon vorhanden</div><div class="wert">{{ vorb.doppelt }}</div><div class="unter">werden übersprungen</div></div>
-  <div class="kpi"><div class="label">nicht lesbar</div><div class="wert" style="{{ 'color:#8A1F18' if vorb.fehler }}">{{ vorb.fehler|length }}</div><div class="unter">werden nicht importiert</div></div>
+  <div class="kpi"><div class="label">schon vorhanden</div><div class="wert">{{ vorb.doppelt }}</div><div class="unter">werden übersprungen (auch früher gelöschte)</div></div>
+  <div class="kpi"><div class="label">nicht lesbar</div><div class="wert" style="{{ 'color:var(--bad)' if vorb.fehler }}">{{ vorb.fehler|length }}</div><div class="unter">werden nicht importiert</div></div>
 </div>
 {% for h in vorb.hinweise %}<div class="flash warn">{{ h }}</div>{% endfor %}
 {% if vorb.fehler %}

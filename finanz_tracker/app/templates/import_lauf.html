@@ -13,7 +13,7 @@
   <div class="kpi"><div class="label">per Regel</div><div class="wert">{{ stat.regel or 0 }}</div></div>
   <div class="kpi"><div class="label">aus früheren Buchungen</div><div class="wert">{{ stat.gedaechtnis or 0 }}</div><div class="unter">{{ stat.ungeprueft or 0 }} davon ungeprüft</div></div>
   <div class="kpi"><div class="label">Umbuchungen</div><div class="wert">{{ stat.umbuchung or 0 }}</div></div>
-  <div class="kpi"><div class="label">offen</div><div class="wert" style="color:#7A4A00">{{ stat.offen or 0 }}</div></div>
+  <div class="kpi"><div class="label">offen</div><div class="wert" style="color:var(--warn)">{{ stat.offen or 0 }}</div></div>
 </div>
 <div class="formreihe">
   {% if stat.offen or stat.ungeprueft %}<a class="btn primaer gross" href="{{ url_for('pruefen.index') }}">Offene im Prüf-Modus zuordnen</a>{% endif %}

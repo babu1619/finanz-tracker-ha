@@ -5,7 +5,7 @@ from flask import Blueprint, Response, abort, g, redirect, render_template, requ
 
 from .. import auth
 from ..db import q, q1, exe, commit, log_aenderung
-from ..services import kategorien, ruecklagen, splits, tags, umbuchungen, zuordnung
+from ..services import kategorien, loeschen, ruecklagen, splits, tags, umbuchungen, zuordnung
 from ..util import ist_monat, monat_plus, aktueller_monat, parse_euro_eingabe, datum_de
 from . import melde, int_oder_none
 
@@ -353,6 +353,14 @@ def sammel():
         for i in ids:
             exe("UPDATE buchung SET darlehen_konto_id = ? WHERE id = ?", (kid, i))
         melde(f"{len(ids)} Buchungen " + ("dem Darlehen zugeordnet." if kid else "von ihrem Darlehen gelöst."))
+    elif aktion == "loeschen":
+        if request.form.get("loeschen_bestaetigt") != "ja":
+            melde("Löschen bitte im Bestätigungsfeld bestätigen.", "warn")
+        else:
+            erg = loeschen.loesche(ids, g.user["id"])
+            melde(f"{erg['geloescht']} Buchungen gelöscht"
+                  + (f", dazu {erg['gegenbuchungen']} automatische Gegenbuchungen" if erg["gegenbuchungen"] else "")
+                  + (". Importierte werden beim nächsten Import übersprungen." if erg["importiert"] else "."))
     elif aktion == "umbuchung" and len(ids) == 2:
         a, b = (q1("SELECT * FROM buchung WHERE id = ?", (i,)) for i in ids)
         if a["betrag_cent"] != -b["betrag_cent"] or a["konto_id"] == b["konto_id"]:
@@ -508,12 +516,12 @@ def bearbeiten(bid):
         if aktion == "umbuchung_loesen":
             umbuchungen.loese(bid)
             melde("Umbuchung gelöst.")
-        elif aktion == "loeschen" and b["manuell_erfasst"]:
-            exe("DELETE FROM ruecklage_bewegung WHERE buchung_id = ?", (bid,))
-            exe("DELETE FROM buchung WHERE id = ?", (bid,))
+        elif aktion == "loeschen":
+            erg = loeschen.loesche([bid], g.user["id"])
             log_aenderung(g.user["id"], "buchung", bid, "geloescht", dict(b))
             commit()
-            melde("Buchung gelöscht.")
+            melde("Buchung gelöscht." + (" Die automatisch angelegte Gegenbuchung ebenfalls." if erg["gegenbuchungen"] else "")
+                  + (" Beim nächsten Import derselben Datei wird sie übersprungen." if erg["importiert"] else ""))
             return redirect(request.form.get("zurueck") or url_for("buchungen.liste"))
         elif _ist_umbuchung_formular(request.form):
             splits.speichere(b, [])

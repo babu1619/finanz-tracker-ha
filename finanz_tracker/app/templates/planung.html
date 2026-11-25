@@ -1,0 +1,131 @@
+{% extends "base.html" %}{% from "_makros.html" import csrf, kat_select with context %}
+{% block titel %}Planung{% endblock %}
+{% block inhalt %}
+<div class="kopf"><h1>Planung</h1><span class="leise">Geplante Ausgaben und Sondereinnahmen – was bleibt vom Vermögen?</span>
+  <form method="get" class="rechts formreihe" style="gap:6px;align-items:end">
+    <label class="feld" style="flex:0 1 170px">Stichtag<input type="month" name="stichtag" value="{{ stichtag }}" min="{{ heute }}" style="min-height:40px"></label>
+    <button class="btn" type="submit">Berechnen</button></form>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Verfügbar heute</div><div class="wert">{{ start|euro_rund }}</div>
+    <div class="unter"><a href="#quellen">aus {{ gewaehlt|length }} Konto{{ 'en' if gewaehlt|length != 1 }} wählen</a></div></div>
+  <div class="kpi"><div class="label">Geplante Ausgaben bis {{ stichtag|monat_kurz }}</div><div class="wert">{{ erg.ausgaben_bis|euro_rund }}</div>
+    <div class="unter">Sondereinnahmen {{ erg.einnahmen_bis|euro_rund }}</div></div>
+  <div class="kpi"><div class="label">Laufender Überschuss</div><div class="wert">{{ (erg.ueberschuss_bis)|euro_rund }}</div>
+    <div class="unter">{% if rate %}{{ rate|euro_rund }} pro Monat bis {{ stichtag|monat_kurz }}{% else %}nicht eingerechnet{% endif %}</div></div>
+  <div class="kpi"><div class="label">Vermögen zum Stichtag</div><div class="wert {{ 'neg' if erg.stichtag_wert is not none and erg.stichtag_wert < 0 }}">{{ erg.stichtag_wert|euro_rund if erg.stichtag_wert is not none else '–' }}</div>
+    <div class="unter">{% if erg.tief %}tiefster Stand {{ erg.tief.wert|euro_rund }} im {{ erg.tief.monat|monat_kurz }}{% endif %}</div></div>
+</div>
+{% if erg.tief and erg.tief.wert < 0 %}
+<div class="flash warn">Im {{ erg.tief.monat|monat_kurz }} reicht das gewählte Vermögen nicht: Es fehlen {{ (-erg.tief.wert)|euro_rund }}. Beziehe weitere Konten ein, verschiebe eine Ausgabe oder plane einen höheren monatlichen Überschuss.</div>
+{% endif %}
+
+<section class="karte">
+  <div class="kopf"><h2 style="margin:0">Vermögensentwicklung</h2><span class="leise">{{ heute|monat_kurz }} bis {{ erg.monate[-1]|monat_kurz }}</span></div>
+  <div class="dg-flaeche" id="dg-planung" style="margin-top:8px"></div>
+</section>
+
+<div class="reihe">
+<section class="karte breit ohne-rand" id="zeitplan">
+  <div class="kopf" style="padding:16px 16px 0"><h2 style="margin:0">Zeitplan</h2><span class="leise">Vermögen nach jedem Posten</span></div>
+  <div class="scroll"><table class="tab" style="min-width:620px">
+    <thead><tr><th>Monat</th><th>Posten</th><th style="text-align:right">Betrag</th><th style="text-align:right">Vermögen danach</th><th></th></tr></thead>
+    <tbody>
+      <tr><td class="mono leise">{{ heute|monat_kurz }}</td><td class="leise">Start: verfügbares Vermögen</td><td></td><td class="betrag">{{ start|euro_rund }}</td><td></td></tr>
+      {% for z in erg.zeitplan %}
+      <tr><td class="mono" style="white-space:nowrap">{{ z.monat|monat_kurz }}{% if z.ueberfaellig %} <span class="tag warn" title="liegt in der Vergangenheit, noch nicht erledigt – im aktuellen Monat angerechnet">offen</span>{% endif %}</td>
+        <td><b>{{ z.name }}</b> <span class="tag {{ 'ok' if z.art == 'einnahme' }}">{{ 'Sondereinnahme' if z.art == 'einnahme' else 'Ausgabe' }}</span>
+          {% if z.kat_pfad or z.notiz %}<div class="leise">{{ z.kat_pfad or '' }}{% if z.kat_pfad and z.notiz %} · {% endif %}{{ z.notiz or '' }}</div>{% endif %}</td>
+        <td class="betrag {{ 'pos' if z.art == 'einnahme' }}">{{ '+' if z.art == 'einnahme' else '−' }}{{ z.betrag_cent|euro_rund }}</td>
+        <td class="betrag {{ 'neg' if z.danach < 0 }}">{{ z.danach|euro_rund }}{% if z.danach < 0 %}<div class="klein">reicht nicht</div>{% endif %}</td>
+        <td style="white-space:nowrap;width:1%">{% if darf_schreiben %}<a class="btn klein" href="{{ url_for('planung.index', bearbeiten=z.id, stichtag=stichtag) }}#posten">Ändern</a>
+          <form method="post" action="{{ url_for('planung.posten_speichern', pid=z.id) }}" style="display:inline">{{ csrf() }}<button class="btn klein" name="aktion" value="erledigt" title="Ist passiert – steckt jetzt im Kontostand">Erledigt</button></form>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="5" class="leer">Noch nichts geplant. Lege rechts eine Ausgabe (z. B. Autokauf) oder eine Sondereinnahme an.</td></tr>{% endfor %}
+    </tbody></table></div>
+  {% set erledigt = liste|selectattr('erledigt')|list %}
+  {% if erledigt %}<details style="padding:0 16px 14px"><summary class="leise">Erledigte Posten ({{ erledigt|length }})</summary>
+    <ul style="margin:8px 0 0;padding-left:18px">{% for p in erledigt %}<li>{{ p.monat|monat_kurz }} · {{ p.name }} · {{ '+' if p.art == 'einnahme' else '−' }}{{ p.betrag_cent|euro_rund }}
+      {% if darf_schreiben %}<form method="post" action="{{ url_for('planung.posten_speichern', pid=p.id) }}" style="display:inline">{{ csrf() }}<button class="btn klein" name="aktion" value="erledigt">wieder offen</button></form>{% endif %}</li>{% endfor %}</ul></details>{% endif %}
+</section>
+
+{% if darf_schreiben %}
+<form method="post" action="{{ url_for('planung.posten_speichern', pid=bearbeiten.id) if bearbeiten else url_for('planung.posten_speichern') }}" class="karte schmal" id="posten" style="display:flex;flex-direction:column;gap:12px">{{ csrf() }}
+  <h2 style="margin:0">{{ 'Posten ändern' if bearbeiten else 'Posten planen' }}</h2>
+  <div class="segment zeitwahl" role="radiogroup" aria-label="Art" style="align-self:flex-start">
+    <label class="btn klein"><input type="radio" name="art" value="ausgabe" {{ 'checked' if not bearbeiten or bearbeiten.art == 'ausgabe' }}> Ausgabe</label>
+    <label class="btn klein"><input type="radio" name="art" value="einnahme" {{ 'checked' if bearbeiten and bearbeiten.art == 'einnahme' }}> Sondereinnahme</label></div>
+  <label class="feld">Bezeichnung<input type="text" name="name" value="{{ bearbeiten.name if bearbeiten }}" placeholder="z. B. Autokauf, Dachsanierung, Bonus" required></label>
+  <div class="formreihe">
+    <label class="feld">Betrag in €<input type="text" name="betrag" inputmode="decimal" value="{{ ('%.2f'|format(bearbeiten.betrag_cent / 100)).replace('.', ',').replace(',00', '') if bearbeiten }}" placeholder="0" required autocomplete="off"></label>
+    <label class="feld">Monat<input type="month" name="monat" value="{{ bearbeiten.monat if bearbeiten else heute }}" required style="min-height:40px"></label>
+  </div>
+  <label class="feld">Kategorie (optional){{ kat_select('kategorie_id', kategorien, bearbeiten.kategorie_id if bearbeiten) }}</label>
+  <label class="feld">Notiz<input type="text" name="notiz" value="{{ bearbeiten.notiz or '' if bearbeiten }}" placeholder="optional"></label>
+  <div class="formreihe" style="align-items:center">
+    <button class="btn primaer" type="submit">Speichern</button>
+    {% if bearbeiten %}<a class="btn" href="{{ url_for('planung.index') }}">Abbrechen</a>
+      <button class="btn gefahr" type="submit" name="aktion" value="loeschen" formnovalidate data-frage="„{{ bearbeiten.name }}“ aus der Planung entfernen?">Entfernen</button>{% endif %}
+  </div>
+</form>
+{% endif %}
+</div>
+
+<div class="reihe">
+<form method="post" action="{{ url_for('planung.quellen_speichern') }}" class="karte breit" id="quellen">{{ csrf() }}<input type="hidden" name="stichtag" value="{{ stichtag }}">
+  <div class="kopf"><h2 style="margin:0">Ausgangsvermögen</h2><span class="leise">Welche Konten stehen für die Planung zur Verfügung?</span></div>
+  {% for gr in quellen %}
+  <fieldset class="quelle-gruppe">
+    <legend><label class="check"><input type="checkbox" data-gruppe="{{ loop.index }}" {{ 'checked' if gr.konten|map(attribute='schluessel')|select('in', gewaehlt)|list|length == gr.konten|length }}>
+      <i class="punkt" style="background: {{ gr.farbe }}"></i><b>{{ gr.name }}</b></label> <span class="leise mono">{{ gr.summe|euro_rund }}</span></legend>
+    {% for k in gr.konten %}<label class="check quelle-konto"><input type="checkbox" name="quelle" value="{{ k.schluessel }}" {{ 'checked' if k.schluessel in gewaehlt }}> <span style="flex:1">{{ k.name }}</span><span class="mono">{{ k.betrag|euro_rund }}</span></label>{% endfor %}
+  </fieldset>
+  {% else %}<p class="leer">Keine Konten mit Guthaben.</p>{% endfor %}
+  <div class="formreihe" style="align-items:end;margin-top:8px">
+    <label class="check" style="flex:0 1 auto"><input type="checkbox" name="mit_rate" value="1" {{ 'checked' if rate is not none }}> Laufenden Überschuss einrechnen</label>
+    <label class="feld" style="flex:0 1 180px">pro Monat in €<input type="text" name="sparrate" inputmode="decimal" value="{{ '%d'|format(((rate if rate is not none else vorschlag) / 100)|round|int) }}"></label>
+    <span class="leise" style="flex:1 1 220px">Vorschlag: Ø der letzten 12 Monate {{ vorschlag|euro_rund }} (Einnahmen − Ausgaben).</span>
+    <button class="btn primaer" type="submit">Übernehmen</button>
+  </div>
+</form>
+
+<section class="karte schmal ohne-rand">
+  <div class="kopf" style="padding:16px 16px 0"><h2 style="margin:0">Je Jahr</h2></div>
+  <table class="tab"><thead><tr><th>Jahr</th><th style="text-align:right">Ausgaben</th><th style="text-align:right">Einnahmen</th><th style="text-align:right">Vermögen Ende</th></tr></thead>
+    <tbody>{% for j in erg.jahre %}<tr><td class="mono">{{ j.jahr }}</td><td class="betrag" style="font-weight:400">{{ j.ausgaben|euro_rund if j.ausgaben else '–' }}</td>
+      <td class="betrag pos" style="font-weight:400">{{ j.einnahmen|euro_rund if j.einnahmen else '–' }}</td>
+      <td class="betrag {{ 'neg' if j.ende is not none and j.ende < 0 }}">{{ j.ende|euro_rund if j.ende is not none else '–' }}</td></tr>{% endfor %}</tbody></table>
+</section>
+</div>
+<p class="leise klein">Die Planung rechnet ohne Zinsen und Kursentwicklung. Erledigte Posten zählen nicht mehr, weil sie bereits im Kontostand enthalten sind. Die Auswahl der Konten und der Überschuss gelten je Benutzer; die geplanten Posten sind für alle sichtbar.</p>
+
+<script type="application/json" id="planung-daten">{{ diagramm|tojson }}</script>
+<script src="{{ url_for('static', filename='diagramme.js') }}?v={{ version }}"></script>
+<script>
+(function () {
+  const d = JSON.parse(document.getElementById("planung-daten").textContent);
+  const M = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+  const mk = (m) => M[+m.slice(5, 7) - 1] + " " + m.slice(2, 4);
+  const box = document.getElementById("dg-planung");
+  const zeichne = () => {
+    const negativ = d.reihen[0].werte.some((w) => w < 0);
+    window.Diagramme.zeichne(box, Object.assign({}, d, { labels: d.labels.map(mk) }), "flaeche",
+      { hoehe: 240, ohneNull: !negativ, ohnePunkte: d.labels.length > 25, ohneLegende: true, links: 64,
+        farben: [negativ ? "#B5475A" : "#0F6B5C"] });
+  };
+  zeichne();
+  let b = window.innerWidth;
+  window.addEventListener("resize", () => { if (Math.abs(window.innerWidth - b) > 8) { b = window.innerWidth; zeichne(); } });
+  // Gruppen-Häkchen setzt alle Konten der Gruppe
+  document.querySelectorAll("[data-gruppe]").forEach((g) => g.addEventListener("change", () => {
+    g.closest("fieldset").querySelectorAll('input[name="quelle"]').forEach((c) => { c.checked = g.checked; });
+  }));
+  document.querySelectorAll('input[name="quelle"]').forEach((c) => c.addEventListener("change", () => {
+    const fs = c.closest("fieldset"), alle = [...fs.querySelectorAll('input[name="quelle"]')];
+    const g = fs.querySelector("[data-gruppe]");
+    g.checked = alle.every((x) => x.checked);
+    g.indeterminate = !g.checked && alle.some((x) => x.checked);
+  }));
+})();
+</script>
+{% endblock %}

@@ -1,6 +1,19 @@
 // Kleine Helfer ohne externe Bibliotheken.
 document.addEventListener("DOMContentLoaded", () => {
   // Rückfrage vor gefährlichen Aktionen
+  // Farbschema: System -> Hell -> Dunkel
+  const thema = document.getElementById("themaschalter");
+  if (thema) {
+    const namen = { system: "System", light: "Hell", dark: "Dunkel" };
+    const lies = () => { try { return localStorage.getItem("farbschema") || "system"; } catch (e) { return "system"; } };
+    const setze = (t) => {
+      if (t === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+      try { if (t === "system") localStorage.removeItem("farbschema"); else localStorage.setItem("farbschema", t); } catch (e) { /* egal */ }
+      thema.querySelector(".thema-text").textContent = namen[t];
+    };
+    setze(lies());
+    thema.addEventListener("click", () => setze({ system: "light", light: "dark", dark: "system" }[lies()]));
+  }
   document.querySelectorAll("form[data-frage]").forEach((f) => {
     f.addEventListener("submit", (e) => { if (!window.confirm(f.dataset.frage)) e.preventDefault(); });
   });
@@ -37,6 +50,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     aktion.addEventListener("change", zeige);
     zeige();
+    // Sammel-Löschen: zusätzlich nachfragen
+    aktion.form.addEventListener("submit", (e) => {
+      if (aktion.value !== "loeschen" || e.submitter?.name === "filter") return;
+      const n = aktion.form.querySelectorAll('input[name="ids"]:checked').length;
+      const ok = aktion.form.querySelector('input[name="loeschen_bestaetigt"]');
+      if (!ok || !ok.checked) { e.preventDefault(); if (ok) { ok.focus(); ok.closest("label").classList.add("fehlt"); } return; }
+      if (!window.confirm(`${n} Buchung${n === 1 ? "" : "en"} endgültig löschen?`)) e.preventDefault();
+    });
   }
 
   // Regel-Formular: Wert-Eingabe passend zum Feld

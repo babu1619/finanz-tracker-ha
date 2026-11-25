@@ -46,7 +46,7 @@
       <td><span class="mini" aria-hidden="true">{% for m in monate %}<span style="height: {{ ([z.werte.get(m, 0), 0]|max / z.max * 100)|round|int }}%"></span>{% endfor %}</span></td>
       <td class="betrag">{{ z.summe|euro_rund }}</td><td class="betrag leise">{{ z.schnitt|round|int|euro_rund }}</td>
       <td class="betrag leise">{{ (z.summe / gesamt_summe * 100)|round|int if gesamt_summe else 0 }} %</td>
-      <td class="betrag leise">{% if z.vorjahr %}{% set d = ((z.summe - z.vorjahr) / z.vorjahr * 100)|round|int %}<span style="color: {{ ('#8A1F18' if d > 0 else '#0A4D42') if art == 'ausgabe' else ('#0A4D42' if d > 0 else '#8A1F18') }}">{{ '+' if d > 0 }}{{ d if d < 500 else '>500' }} %</span>{% else %}–{% endif %}</td></tr>
+      <td class="betrag leise">{% if z.vorjahr %}{% set d = ((z.summe - z.vorjahr) / z.vorjahr * 100)|round|int %}<span style="color: {{ ('var(--bad)' if d > 0 else 'var(--gut)') if art == 'ausgabe' else ('var(--gut)' if d > 0 else 'var(--bad)') }}">{{ '+' if d > 0 }}{{ d if d < 500 else '>500' }} %</span>{% else %}–{% endif %}</td></tr>
     {% else %}<tr><td colspan="6" class="leer">Keine Daten im Zeitraum.</td></tr>{% endfor %}</tbody>
   </table></div>
 </section>

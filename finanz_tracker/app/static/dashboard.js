@@ -82,7 +82,7 @@
       el.textContent = `${delta >= 0 ? "+" : "−"}${DG.zahl(Math.abs(delta), "€")}` +
         (p !== null ? ` (${delta >= 0 ? "+" : "−"}${Math.abs(p).toLocaleString("de-DE", { maximumFractionDigits: 1 })} %)` : "") +
         ` seit ${mk(labels[0] || "")}`;
-      el.style.color = farbe;
+      el.style.color = delta >= 0 ? "var(--gut)" : "var(--bad)";
     }
     DG.zeichne(box, { labels: labels.map(mk), einheit: "€", reihen: [{ name: "Nettovermögen", werte }] }, "flaeche",
       { hoehe: 230, farben: [farbe], ohneNull: true, ohnePunkte: werte.length > 13, ohneLegende: true, links: 64 });

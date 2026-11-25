@@ -9,6 +9,8 @@
 <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
 <link rel="manifest" href="{{ url_for('pwa.manifest') }}">
 <meta name="theme-color" content="#18211E">
+<script>/* Farbschema vor dem Zeichnen setzen, damit die Seite nicht kurz hell aufblitzt */
+try { var t = localStorage.getItem("farbschema"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Finanzen">
@@ -25,6 +27,7 @@
     {% if darf_schreiben %}<a href="{{ url_for('pruefen.index') }}" class="{{ 'aktiv' if ep.startswith('pruefen') }}">Prüfen{% if offen and (offen.pruefen + offen.umbuchungen) %}<span class="zahl">{{ offen.pruefen + offen.umbuchungen }}</span>{% endif %}</a>{% endif %}
     <a href="{{ url_for('budgets.index') }}" class="{{ 'aktiv' if ep.startswith('budgets') }}">Budgets</a>
     <a href="{{ url_for('sparen.index') }}" class="{{ 'aktiv' if ep.startswith('sparen') }}">Sparen</a>
+    <a href="{{ url_for('planung.index') }}" class="{{ 'aktiv' if ep.startswith('planung') }}">Planung</a>
     <a href="{{ url_for('auswertung.index') }}" class="{{ 'aktiv' if ep.startswith('auswertung') }}">Auswertung</a>
     <a href="{{ url_for('darlehen.index') }}" class="{{ 'aktiv' if ep.startswith('darlehen') }}">Darlehen</a>
     <a href="{{ url_for('krypto.index') }}" class="{{ 'aktiv' if ep.startswith('krypto') }}">Krypto</a>
@@ -45,6 +48,7 @@
   </nav>
   <div class="wer">
     {% if darf_schreiben %}<a class="plus" href="{{ url_for('erfassen.index') }}" title="Bar erfassen" aria-label="Bar erfassen">+ Bar</a>{% endif %}
+    <button type="button" class="themaschalter" id="themaschalter" title="Farbschema: System, Hell oder Dunkel" aria-label="Farbschema wechseln"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 1.8a6.2 6.2 0 0 1 0 12.4z" fill="currentColor"/></svg><span class="thema-text">System</span></button>
     <a href="{{ url_for('auth.passwort') }}" title="Passwort ändern">{{ user.name }}</a>
     <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button type="submit">Abmelden</button></form>
   </div>

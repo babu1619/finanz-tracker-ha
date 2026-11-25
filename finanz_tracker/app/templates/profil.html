@@ -22,8 +22,8 @@
       <label class="feld">Datumsformat<select name="date_format">{% for k in datumsformate %}<option value="{{ k }}" {{ 'selected' if pd.einstellungen.date_format == k }}>{{ k }}</option>{% endfor %}</select></label>
       <label class="feld">Zahlenformat<select name="decimal"><option value="," {{ 'selected' if pd.einstellungen.decimal == ',' }}>1.234,56 (deutsch)</option><option value="." {{ 'selected' if pd.einstellungen.decimal == '.' }}>1,234.56</option></select></label>
     </div>
-    {% if bsp.get('vorspann') %}<pre class="roh"><span style="color:#8A9590;text-decoration:line-through">{% for r in bsp.vorspann %}{{ r|join(' ; ') }}
-{% endfor %}</span><b style="color:#18211E">{{ headers|join(' ; ') }}</b></pre>
+    {% if bsp.get('vorspann') %}<pre class="roh"><span style="color:var(--quiet2);text-decoration:line-through">{% for r in bsp.vorspann %}{{ r|join(' ; ') }}
+{% endfor %}</span><b style="color:var(--ink)">{{ headers|join(' ; ') }}</b></pre>
     <p class="leise klein" style="margin:0">Durchgestrichen: Vorspann-Zeilen, die übersprungen werden. Fett: erkannte Spaltenüberschriften. Wird ein Zeichensatz oder Trennzeichen geändert, liest das Tool die Spalten beim Speichern neu ein.</p>{% endif %}
   </section>
 
@@ -34,7 +34,7 @@
       <thead><tr>{% for h in headers %}{% set i = loop.index0 %}
         <th data-spalte="{{ i }}"><select class="spalte" name="feld{{ i }}" aria-label="Zuordnung Spalte {{ h }}" style="width:100%">
           {% for k, t in felder.items() %}<option value="{{ k }}" {{ 'selected' if feld_von.get(i, 'ignore') == k }}>{{ t }}</option>{% endfor %}
-        </select><div style="margin-top:6px;color:#3A4642;font-weight:600">{{ h }}</div></th>{% endfor %}</tr></thead>
+        </select><div style="margin-top:6px;color:var(--ink2);font-weight:600">{{ h }}</div></th>{% endfor %}</tr></thead>
       <tbody>{% for r in zeilen %}<tr>{% for c in r %}<td data-spalte="{{ loop.index0 }}">{{ c }}</td>{% endfor %}</tr>{% endfor %}</tbody>
     </table></div>
     <div class="formreihe" style="padding:12px 18px;border-top:1px solid var(--line)">

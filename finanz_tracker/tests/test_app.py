@@ -229,6 +229,7 @@ class Ablauf(unittest.TestCase):
         self._v070(db)
         self._v071(db)
         self._v080(db)
+        self._v090(db)
         self._v072(db)
 
         # 11. Import rückgängig
@@ -1136,6 +1137,94 @@ class Ablauf(unittest.TestCase):
         self.assertNotIn(str(kid), [o for o in re.findall(r'name="konto_id".*?</select>', self.get("/erfassen/"), re.S)[0].split('value="')[1:]])
         db.execute("DELETE FROM konto WHERE id = ?", (kid,))
         db.commit()
+
+    def _v090(self, db):
+        """0.9.0: Buchungen löschen, Krypto-Gesamtverlauf, Planung, Farbschema."""
+        # --- Löschen einer importierten Buchung: verschwindet und kommt beim erneuten Import nicht wieder
+        giro = db.execute("SELECT konto_id FROM buchung WHERE dedup_hash NOT LIKE 'manuell:%' AND dedup_hash NOT LIKE 'gegen:%' "
+                          "AND ist_umbuchung = 0 AND manuell_erfasst = 0 AND auto_gegenbuchung = 0 "
+                          "GROUP BY konto_id ORDER BY COUNT(*) DESC LIMIT 1").fetchone()["konto_id"]
+        ziel = db.execute("SELECT * FROM buchung WHERE konto_id = ? AND ist_umbuchung = 0 AND manuell_erfasst = 0 "
+                          "ORDER BY id LIMIT 1", (giro,)).fetchone()
+        html = self.get(f"/buchungen/{ziel['id']}")
+        self.assertIn("Buchung löschen", html)
+        self.assertIn("Importierte Buchung", html)
+        html = self.post(f"/buchungen/{ziel['id']}", {"aktion": "loeschen"})
+        self.assertIn("Buchung gelöscht.", html)
+        self.assertIsNone(db.execute("SELECT 1 FROM buchung WHERE id = ?", (ziel["id"],)).fetchone())
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM buchung_geloescht").fetchone()[0], 1)
+        html = self.get("/import/")
+        self.assertIn("Gelöschte Buchungen (1)", html)
+        # Sammel-Löschen nur mit Bestätigung
+        zwei = [r["id"] for r in db.execute("SELECT id FROM buchung WHERE konto_id = ? AND ist_umbuchung = 0 ORDER BY id LIMIT 2",
+                                            (giro,)).fetchall()]
+        html = self.post("/buchungen/sammel", {"aktion": "loeschen", "ids": [str(i) for i in zwei]}, von="/buchungen/?monat=alle")
+        self.assertIn("bitte im Bestätigungsfeld bestätigen", html)
+        self.assertEqual(db.execute(f"SELECT COUNT(*) FROM buchung WHERE id IN ({zwei[0]}, {zwei[1]})").fetchone()[0], 2)
+        html = self.post("/buchungen/sammel", {"aktion": "loeschen", "ids": [str(i) for i in zwei], "loeschen_bestaetigt": "ja"},
+                         von="/buchungen/?monat=alle")
+        self.assertIn("2 Buchungen gelöscht", html)
+        self.assertEqual(db.execute(f"SELECT COUNT(*) FROM buchung WHERE id IN ({zwei[0]}, {zwei[1]})").fetchone()[0], 0)
+        # Gelöschte wieder zulassen
+        gid = db.execute("SELECT id FROM buchung_geloescht ORDER BY id LIMIT 1").fetchone()["id"]
+        html = self.post(f"/import/geloescht/{gid}/zulassen", {}, von="/import/")
+        self.assertIn("wieder angelegt", html)
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM buchung_geloescht").fetchone()[0], 2)
+        with self.app.app_context():
+            from app.services import loeschen
+            self.assertEqual(len(loeschen.geloeschte_hashes(giro)), 2)
+
+        # --- Krypto-Gesamtverlauf: Summe aller Bestände je Tag, fehlende Kurse vom Vortag
+        from datetime import date, timedelta
+        from app.util import monat_plus
+        with self.app.app_context():
+            from app.db import exe, commit as dbcommit
+            from app.services import krypto
+            heute = date.today()
+            exe("DELETE FROM krypto_kurs WHERE datum >= ?", ((heute - timedelta(days=2)).isoformat(),))
+            for t, (b, e) in enumerate([(5000000, 200000), (5100000, None), (5200000, 210000)]):
+                d = (heute - timedelta(days=2 - t)).isoformat()
+                exe("INSERT OR REPLACE INTO krypto_kurs VALUES ('bitcoin', ?, ?)", (d, b))
+                if e:
+                    exe("INSERT OR REPLACE INTO krypto_kurs VALUES ('ethereum', ?, ?)", (d, e))
+            dbcommit()
+            bestaende = [{"id": 1, "name": "BTC", "coin": "bitcoin", "menge": 0.5, "aktiv": 1},
+                         {"id": 2, "name": "ETH", "coin": "ethereum", "menge": 2.0, "aktiv": 1},
+                         {"id": 3, "name": "alt", "coin": "bitcoin", "menge": 1.0, "aktiv": 0}]
+            v = krypto.verlauf_gesamt(bestaende, 7, einzeln=True)
+            self.assertEqual(v["reihen"][0]["werte"][-3:], [2900000, 2950000, 3020000])
+            self.assertEqual(len(v["reihen"]), 3)  # Gesamt + zwei aktive Bestände
+        r = self.c.get("/krypto/verlauf?gesamt=summe&tage=30")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()["reihen"][0]["name"], "Gesamtwert")
+
+        # --- Planung
+        html = self.get("/planung/")
+        self.assertIn("Ausgangsvermögen", html)
+        m = monat_plus(date.today().strftime("%Y-%m"), 3)
+        html = self.post("/planung/posten", {"art": "ausgabe", "name": "Autokauf", "betrag": "20.000", "monat": m}, von="/planung/")
+        self.assertIn("„Autokauf“ gespeichert", html)
+        html = self.post("/planung/posten", {"art": "einnahme", "name": "Bonus", "betrag": "5000", "monat": m}, von="/planung/")
+        self.assertIn("Sondereinnahme", html)
+        with self.app.app_context():
+            from app.services import planung
+            liste = planung.posten()
+            erg = planung.berechne(100000_00, liste, 1000_00, monat_plus(m, 2))
+            # Einnahme vor Ausgabe im selben Monat; Überschuss ab Folgemonat
+            self.assertEqual([z["name"] for z in erg["zeitplan"]], ["Bonus", "Autokauf"])
+            self.assertEqual(erg["zeitplan"][-1]["danach"], 100000_00 + 3 * 1000_00 + 5000_00 - 20000_00)
+            self.assertEqual(erg["stichtag_wert"], 100000_00 + 5 * 1000_00 - 15000_00)
+            self.assertEqual(erg["ausgaben_bis"], 20000_00)
+        pid = db.execute("SELECT id FROM plan_posten WHERE name = 'Autokauf'").fetchone()["id"]
+        self.post(f"/planung/posten/{pid}", {"aktion": "erledigt"}, von="/planung/")
+        self.assertEqual(db.execute("SELECT erledigt FROM plan_posten WHERE id = ?", (pid,)).fetchone()[0], 1)
+        html = self.post("/planung/quellen", {"quelle": [], "mit_rate": "1", "sparrate": "250"}, von="/planung/")
+        self.assertIn("250 € pro Monat", html)
+
+        # --- Farbschema
+        html = self.get("/")
+        self.assertIn('id="themaschalter"', html)
+        self.assertIn('localStorage.getItem("farbschema")', html)
 
     def _v080(self, db):
         """0.8.0: Dashboard im Stil von Sure – Nettovermögen, Cashflow-Sankey, Vermögensaufstellung, Einklappen."""

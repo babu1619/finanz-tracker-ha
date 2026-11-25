@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.9.0 – November 2026
+
+- Buchungen löschen: jede Buchung auf ihrer Detailseite (mit Rückfrage) oder mehrere über die Sammelaktion „Ausgewählte Buchungen löschen“ (zusätzlich Häkchen „Ja, endgültig löschen“ und Rückfrage). Automatisch angelegte Gegenbuchungen verschwinden mit; bei einer verknüpften Umbuchung bleibt die Gegenseite erhalten. Gelöschte importierte Buchungen werden beim erneuten Import derselben Datei übersprungen; unter Import → „Gelöschte Buchungen“ lassen sie sich wieder zulassen
+- Krypto: Im Verlauf zusätzlich „Gesamtwert aller Bestände“ (kumuliert) und „Gesamtwert und einzelne Bestände“ (Linien); fehlende Tageskurse werden vom Vortag übernommen
+- Neuer Bereich „Planung“: geplante Ausgaben (z. B. Autokauf, Sanierung) und Sondereinnahmen für dieses und kommende Jahre. Ausgangsvermögen aus wählbaren Konten bzw. Vermögensgruppen (Vorauswahl ohne Depot, Krypto und Bausparen), optional mit laufendem monatlichem Überschuss (Vorschlag: Ø der letzten 12 Monate). Zeigt das Vermögen nach jedem Posten, den tiefsten Stand mit Warnung, das Vermögen zu einem wählbaren Stichtag, einen Verlauf und eine Übersicht je Jahr. Posten lassen sich ändern, entfernen und als erledigt markieren
+- Dunkles Farbschema: folgt automatisch der Einstellung des Geräts; oben rechts zwischen System, Hell und Dunkel umschaltbar (wird je Gerät gemerkt). Diagramme, Tabellen und Hinweise sind angepasst
+
 ## 0.8.0 – November 2026
 
 - Dashboard neu gestaltet, angelehnt an die Finanz-App Sure: ruhige Karten mit großen Zahlen, Diagramme aus der eigenen Bibliothek (weiterhin ohne Internet)

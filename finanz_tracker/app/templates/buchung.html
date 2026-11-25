@@ -121,8 +121,12 @@
   </div>
 </form></details>
 {% endif %}
-{% if darf_schreiben and b.manuell_erfasst %}
-<form method="post" class="karte" data-frage="Diese bar erfasste Buchung löschen?">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen"><input type="hidden" name="zurueck" value="{{ zurueck }}">
-  <button class="btn gefahr" type="submit">Bar erfasste Buchung löschen</button></form>
+{% if darf_schreiben %}
+{% set importiert = not b.manuell_erfasst and not b.auto_gegenbuchung %}
+<form method="post" class="karte loeschkarte" data-frage="Diese Buchung über {{ b.betrag_cent|euro_vz }} ({{ b.gegenpartei or 'ohne Gegenpartei' }}) endgültig löschen?{% if importiert %} Der Kontostand stimmt danach nicht mehr mit dem Auszug überein.{% endif %}">{{ csrf() }}<input type="hidden" name="aktion" value="loeschen"><input type="hidden" name="zurueck" value="{{ zurueck }}">
+  <div class="formreihe" style="align-items:center">
+    <button class="btn gefahr" type="submit">Buchung löschen</button>
+    <span class="leise" style="flex:1 1 280px">{% if importiert %}Importierte Buchung: Ein erneuter Import derselben Datei legt sie nicht wieder an (unter Import → „Gelöschte Buchungen“ wieder zulassen).{% else %}Eine automatisch angelegte Gegenbuchung wird mit gelöscht.{% endif %}</span>
+  </div></form>
 {% endif %}
 {% endblock %}

@@ -38,4 +38,18 @@
       </tr>{% else %}<tr><td colspan="7" class="leer">Noch keine Importe.</td></tr>{% endfor %}</tbody>
   </table></div>
 </section>
+
+{% if geloescht %}
+<details class="karte" id="geloescht"><summary>Gelöschte Buchungen ({{ geloescht|length }}) – werden beim Import übersprungen</summary>
+  <p class="leise">Importierte Buchungen, die du gelöscht hast, legt ein erneuter Import derselben Datei nicht wieder an. „Wieder zulassen“ hebt das auf.</p>
+  <div class="scroll"><table class="tab" style="min-width:560px">
+    <thead><tr><th>Gelöscht am</th><th>Konto</th><th>Datum</th><th>Gegenpartei</th><th style="text-align:right">Betrag</th><th></th></tr></thead>
+    <tbody>{% for x in geloescht %}<tr>
+      <td class="leise">{{ x.geloescht_am[:16]|replace('T', ' ') }}</td><td>{{ x.konto_name }}</td>
+      <td class="mono">{{ x.buchungsdatum|datum if x.buchungsdatum }}</td><td>{{ x.gegenpartei or '–' }}</td>
+      <td class="betrag">{{ x.betrag_cent|euro_vz if x.betrag_cent is not none }}</td>
+      <td><form method="post" action="{{ url_for('importe.geloescht_zulassen', gid=x.id) }}">{{ csrf() }}<button class="btn klein" type="submit">Wieder zulassen</button></form></td>
+    </tr>{% endfor %}</tbody></table></div>
+</details>
+{% endif %}
 {% endblock %}

@@ -5,7 +5,7 @@
         <span class="name" title="{{ k.pfad or k.name }}">{% if not unter %}<i class="punkt" style="background:{{ k.farbe }}"></i>{% endif %}{{ k.name }}</span>
         <span class="balken"><span style="width: {{ (k.betrag / max_kat * 100)|round(1) }}%; background: {{ k.farbe or '#0F6B5C' }}"></span></span>
         <span class="b mono">{{ k.betrag|euro_rund }}</span>
-        <span class="d">{% if k.vormonat %}{% set d = ((k.betrag - k.vormonat) / k.vormonat * 100)|round|int %}<span style="color: {{ '#8A1F18' if d > 0 else '#0A4D42' }}">{% if d > 500 %}&gt; +500 %{% else %}{{ '+' if d > 0 }}{{ d }} %{% endif %}</span>{% else %}<span class="leise">neu</span>{% endif %}</span>
+        <span class="d">{% if k.vormonat %}{% set d = ((k.betrag - k.vormonat) / k.vormonat * 100)|round|int %}<span style="color: {{ 'var(--bad)' if d > 0 else 'var(--gut)' }}">{% if d > 500 %}&gt; +500 %{% else %}{{ '+' if d > 0 }}{{ d }} %{% endif %}</span>{% else %}<span class="leise">neu</span>{% endif %}</span>
       </a>
 {%- endmacro %}
 {#- Ein- und ausklappbarer Bereich: Kopf mit Titel, Kurzinfo (bleibt eingeklappt sichtbar) und optionalen Aktionen -#}

@@ -71,7 +71,9 @@
         <option value="bestaetigen">Als geprüft bestätigen</option>
         <option value="als_umbuchung">Als Umbuchung markieren (Gegenkonto wählen)</option>
         <option value="umbuchung">Zwei Buchungen als Umbuchung verknüpfen</option>
-        <option value="vertrag">Vertrag / Abo zuordnen</option><option value="darlehen">Darlehen zuordnen</option></select></label>
+        <option value="vertrag">Vertrag / Abo zuordnen</option><option value="darlehen">Darlehen zuordnen</option>
+        <option value="loeschen">Ausgewählte Buchungen löschen</option></select></label>
+    <label class="check" data-fuer="loeschen" style="flex:1 1 260px"><input type="checkbox" name="loeschen_bestaetigt" value="ja"> Ja, endgültig löschen</label>
     <label class="feld" data-fuer="als_umbuchung">Gegenkonto<select name="gegenkonto">{% for k in gegenkonten %}<option value="{{ k.id }}">{{ k.name }}{{ ' (Gegenbuchung automatisch)' if k.typ in ('bargeld', 'depot') }}</option>{% endfor %}<option value="extern">außerhalb des Tools</option></select></label>
     <label class="feld" data-fuer="kategorie" style="flex:1 1 240px">Kategorie{{ kat_select('kategorie_id', kategorien) }}</label>
     <label class="feld" data-fuer="person">Person{{ person_select('person_id', personen) }}</label>
@@ -134,7 +136,7 @@
             {% if b.darlehen_name %}<a class="quelle" href="{{ url_for('darlehen.detail', kid=b.darlehen_konto_id) }}">Darlehen: {{ b.darlehen_name }}</a>{% endif %}</td>
           <td class="leise sp-neben">{% if darf_schreiben %}<div class="inline-feld" data-bid="{{ b.id }}" data-feld="person"><select class="inline-eingabe" aria-label="Person"><option value="">–</option>{% for p in personen %}<option value="{{ p.id }}" {{ 'selected' if b.person_id == p.id }}>{{ p.name }}</option>{% endfor %}</select></div>{% else %}{{ b.person_name or '' }}{% endif %}</td>
           <td class="sp-neben sp-tags">{% if darf_schreiben %}<div class="inline-feld" data-bid="{{ b.id }}" data-feld="tags"><input type="text" class="inline-eingabe" list="tagliste" value="{{ (tags_je.get(b.id) or [])|map(attribute='name')|join(', ') }}" placeholder="–" autocomplete="off" aria-label="Tags"></div>{% else %}{{ tagliste(tags_je.get(b.id)) }}{% endif %}</td>
-          <td class="betrag {{ 'pos' if b.betrag_cent > 0 }}" style="{{ 'color:#56625D' if b.ist_umbuchung }}">{{ b.betrag_cent|euro_vz }}</td>
+          <td class="betrag {{ 'pos' if b.betrag_cent > 0 }}" style="{{ 'color:var(--quiet)' if b.ist_umbuchung }}">{{ b.betrag_cent|euro_vz }}</td>
         </tr>
       {% else %}
         <tr><td colspan="9" class="leer">Keine Buchungen für diese Auswahl.</td></tr>

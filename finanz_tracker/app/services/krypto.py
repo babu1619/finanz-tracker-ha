@@ -143,6 +143,38 @@ def bestaende(konten: list[int]) -> list[dict]:
     return erg
 
 
+def verlauf_gesamt(bestaende: list[dict], tage: int | None, einzeln: bool = False) -> dict:
+    """Kumulierter Wert aller aktiven Bestände je Tag (Kurse fehlender Tage werden vom Vortag übernommen)."""
+    aktiv = [b for b in bestaende if b["aktiv"] and b["menge"]]
+    ab = (jetzt().date() - timedelta(days=tage)).isoformat() if tage else "0000-00-00"
+    kurse = {}
+    for coin in {b["coin"] for b in aktiv}:
+        vorher = q1("SELECT preis_cent FROM krypto_kurs WHERE coin = ? AND datum < ? ORDER BY datum DESC LIMIT 1", (coin, ab))
+        kurse[coin] = {"start": vorher["preis_cent"] if vorher else None,
+                       "tage": {r["datum"]: r["preis_cent"] for r in
+                                q("SELECT datum, preis_cent FROM krypto_kurs WHERE coin = ? AND datum >= ?", (coin, ab))}}
+    daten = sorted({d for k in kurse.values() for d in k["tage"]})
+    letzter = {c: k["start"] for c, k in kurse.items()}
+    reihen = {b["id"]: [] for b in aktiv}
+    summe = []
+    for d in daten:
+        for c, k in kurse.items():
+            if d in k["tage"]:
+                letzter[c] = k["tage"][d]
+        s = 0
+        for b in aktiv:
+            v = round(b["menge"] * letzter[b["coin"]]) if letzter[b["coin"]] is not None else 0
+            reihen[b["id"]].append(v)
+            s += v
+        summe.append(s)
+    erg = {"labels": [f"{d[8:10]}.{d[5:7]}.{d[2:4]}" for d in daten], "einheit": "€",
+           "reihen": [{"id": "gesamt", "name": "Gesamtwert", "werte": summe}],
+           "aenderung": ((summe[-1] / summe[0] - 1) * 100) if len(summe) > 1 and summe[0] else None}
+    if einzeln and len(aktiv) > 1:
+        erg["reihen"] += [{"id": b["id"], "name": b["name"], "werte": reihen[b["id"]]} for b in aktiv]
+    return erg
+
+
 def wert(konto_id: int) -> int:
     """Wert eines Krypto-Kontos in Cent (für Kontenliste und Dashboard)."""
     r = q1("SELECT * FROM krypto WHERE konto_id = ?", (konto_id,))

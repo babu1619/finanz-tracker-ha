@@ -1,6 +1,6 @@
 # Finanz-Tracker – Installation auf dem Home Assistant Green
 
-Version 0.8.0 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
+Version 0.9.0 · Haushaltsbuch für die Familie als Home-Assistant-Add-on.
 Die App ist eine eigenständige, verschlüsselte Webseite (https, Port 8099), die sich auf dem Handy als App installieren lässt;
 Home Assistant dient nur als Host.
 Alle Daten liegen lokal in der SQLite-Datenbank des Add-ons und sind Teil der Home-Assistant-Backups.
@@ -79,6 +79,16 @@ Startset an Kategorien angehakt lassen › „Einrichten“.
 
 Tipp für den Start: Die letzten 12 Monate importieren und einmal den Prüf-Modus durcharbeiten. Danach gibt es
 genug Regeln und Erfahrungswerte für eine weitgehend automatische Zuordnung.
+
+## Neu in 0.9.0 – kurz erklärt
+
+- **Buchungen löschen:** In der Buchung ganz unten „Buchung löschen“, oder in der Buchungsliste unter „Mehrere Buchungen ändern“
+  die Aktion „Ausgewählte Buchungen löschen“. Gelöschte importierte Buchungen kommen beim nächsten Import nicht wieder;
+  unter Import → „Gelöschte Buchungen“ lassen sie sich wieder zulassen.
+- **Planung:** Neuer Menüpunkt. Ausgaben wie Autokauf oder Sanierung und Sondereinnahmen mit Monat eintragen, unten
+  die Konten wählen, die zur Verfügung stehen. Die Seite zeigt das Vermögen nach jedem Posten und zum gewählten Stichtag.
+- **Krypto:** Im Verlauf „Gesamtwert aller Bestände“ wählen.
+- **Dunkel:** Oben rechts der Knopf „System / Hell / Dunkel“.
 
 ## Neu in 0.7.0 – kurz erklärt
 

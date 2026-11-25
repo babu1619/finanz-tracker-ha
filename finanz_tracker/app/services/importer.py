@@ -7,7 +7,7 @@ from datetime import date
 from .. import config
 from ..db import q, q1, exe, jload, jdump
 from ..util import partner_key, monat_von, norm_text, norm_iban
-from . import csvimport, zuordnung, umbuchungen
+from . import csvimport, loeschen, zuordnung, umbuchungen
 
 
 def profil_dict(row) -> dict:
@@ -59,6 +59,7 @@ def vorbereiten(konto_id, raw: bytes, dateiname: str) -> dict:
                                      "dieser Importweg ist in v1 noch nicht verfügbar.")
     erg = csvimport.lese_datei(raw, profil)
     vorhanden = {r["dedup_hash"] for r in q("SELECT dedup_hash FROM buchung WHERE konto_id = ?", (konto_id,))}
+    vorhanden |= loeschen.geloeschte_hashes(konto_id)  # gelöschte Buchungen nicht wieder anlegen
     zaehler: dict[str, int] = {}
     zeilen = []
     for d in erg["datensaetze"]:

@@ -110,7 +110,7 @@
 <section class="karte">
   <div class="kopf"><h2 style="margin:0">Restschuld laut Plan (Jahresende)</h2><span class="rechts leise">alle Darlehen</span></div>
   <div class="scroll" style="margin-top:12px"><div style="min-width:{{ [verlauf|length * 18, 320]|max }}px">
-    <div class="balkenreihe">{% for v in verlauf %}<span title="{{ v.jahr }}: {{ v.rest|euro_rund }}" style="height: {{ (v.rest / max_verlauf * 100)|round(1) }}%;{{ 'background:#0A4D42' if v.jahr == heute_jahr }}"></span>{% endfor %}</div>
+    <div class="balkenreihe">{% for v in verlauf %}<span title="{{ v.jahr }}: {{ v.rest|euro_rund }}" style="height: {{ (v.rest / max_verlauf * 100)|round(1) }}%;{{ 'background:var(--accent-dark)' if v.jahr == heute_jahr }}"></span>{% endfor %}</div>
     <div class="verlauf-lbl" style="min-width:0;gap:2px">{% for v in verlauf %}<span>{{ v.jahr if loop.first or loop.last or v.jahr % 5 == 0 or v.jahr == heute_jahr else '' }}</span>{% endfor %}</div>
   </div></div>
 </section>

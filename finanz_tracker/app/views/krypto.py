@@ -26,10 +26,13 @@ def index():
 @bp.route("/verlauf")
 @auth.login_required
 def verlauf():
+    tage = None if request.args.get("tage") == "alle" else (int_oder_none(request.args.get("tage")) or 365)
+    gesamt = request.args.get("gesamt")
+    if gesamt in ("summe", "einzeln"):
+        return jsonify(krypto.verlauf_gesamt(krypto.bestaende(auth.sichtbare_konten()), tage, gesamt == "einzeln"))
     coin = request.args.get("coin", "bitcoin")
     if coin not in krypto.COINS:
         abort(404)
-    tage = None if request.args.get("tage") == "alle" else (int_oder_none(request.args.get("tage")) or 365)
     menge = None
     kid = int_oder_none(request.args.get("bestand"))
     if kid:

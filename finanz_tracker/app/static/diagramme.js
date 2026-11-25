@@ -411,7 +411,7 @@
     }
     seite(L, yL, true);
     seite(R, yR, false);
-    el("rect", { x: xM, y: yM, width: kb, height: hM, rx: 2, fill: optionen.mitteFarbe || "#2E3C37" }, gKnoten);
+    el("rect", { x: xM, y: yM, width: kb, height: hM, rx: 2, fill: optionen.mitteFarbe || "#2E3C37", class: optionen.mitteFarbe ? "" : "dg-sk-mitte" }, gKnoten);
     const tm = el("text", { x: xM + kb / 2, y: yM - 10, "text-anchor": "middle", class: "dg-sk-name" }, gKnoten);
     tm.textContent = `${d.mitte || "Einnahmen"} ${kurz(gesamt, "€")}`;
     box.append(svg);

@@ -4,7 +4,7 @@ from flask import Blueprint, abort, g, redirect, render_template, request, url_f
 
 from .. import auth, config
 from ..db import q, q1, exe, commit, jdump, jload, log_aenderung
-from ..services import csvimport, importer
+from ..services import csvimport, importer, loeschen
 from ..util import datum_de
 from . import melde, int_oder_none
 
@@ -53,7 +53,18 @@ def index():
                    ORDER BY l.zeitpunkt DESC LIMIT 20""", [k["id"] for k in konten])
     profile = q("""SELECT p.*, (SELECT group_concat(k.name, ', ') FROM konto_importprofil kp JOIN konto k ON k.id = kp.konto_id
                                 WHERE kp.importprofil_id = p.id) AS konten FROM importprofil p ORDER BY p.name""")
-    return render_template("import.html", konten=konten, laeufe=laeufe, profile=profile)
+    return render_template("import.html", konten=konten, laeufe=laeufe, profile=profile,
+                           geloescht=loeschen.liste(auth.sichtbare_konten()))
+
+
+@bp.route("/geloescht/<int:gid>/zulassen", methods=["POST"])
+@auth.schreibrecht
+def geloescht_zulassen(gid):
+    if loeschen.zulassen(gid, auth.sichtbare_konten()):
+        log_aenderung(g.user["id"], "buchung_geloescht", gid, "zugelassen")
+        commit()
+        melde("Wird beim nächsten Import derselben Datei wieder angelegt.")
+    return redirect(url_for("importe.index") + "#geloescht")
 
 
 @bp.route("/uebernehmen/<token>", methods=["POST"])
@@ -323,6 +334,7 @@ def screenshot_zeilen(konto_id, listen: list[list[dict]]) -> list[dict]:
             elif len(us) > len(gesamt[s]):
                 gesamt[s] = us
     vorhanden = {r["dedup_hash"] for r in q("SELECT dedup_hash FROM buchung WHERE konto_id = ?", (konto_id,))}
+    vorhanden |= loeschen.geloeschte_hashes(konto_id)
     zeilen = []
     for s in reihenfolge:
         for n, u in enumerate(gesamt[s]):
