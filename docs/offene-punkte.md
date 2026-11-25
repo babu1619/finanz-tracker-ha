@@ -27,26 +27,15 @@ Die Hanseatic-Kreditkarte geht nicht per FinTS und bleibt beim PDF- bzw. Screens
 - **Sicherungskopien vor einer Wiederherstellung** (`/data/vor-wiederherstellung-*.db`) werden nie automatisch
   gelöscht.
 
-## Abweichungen zwischen Dokumentation und Repository
+## Weitere offene Punkte
 
-Beim Erstellen dieser Dokumentation aufgefallen, noch nicht behoben:
-
-1. **GitHub-Workflows fehlen.**
-   - README und `tools/pruefen.py` beschreiben eine automatische Prüfung unter „Actions“ (Tests, Image-Bau, Probestart
-     mit HTTPS) und einen Workflow für vorgebaute Images.
-   - Im Repository gibt es keinen Ordner `.github/workflows`; vermutlich ging er beim Hochladen über die
-     GitHub-Webseite verloren, weil versteckte Ordner fehlen.
-   - Folge: Nichts wird bei einem Push automatisch geprüft. Die Prüfung läuft nur lokal mit `tools/pruefen.py`.
-2. **README teilweise veraltet:**
-   - Die Installationsanleitung nennt noch das Paket `finanz-tracker-v0.2.0.zip` und Version 0.2.0 in den
-     Protokollzeilen.
-   - Der Abschnitt „Entwicklung und Tests“ verspricht `http://localhost:8080`; ohne `HTTPS=0` startet die App lokal
-     mit HTTPS.
-3. **Keine Versions-Tags:** `tools/release.py` setzt Tags `vX.Y.Z`. Die bisherigen Versionen wurden ohne Tags
+1. **Keine Versions-Tags:** `tools/release.py` setzt Tags `vX.Y.Z`. Die bisherigen Versionen wurden ohne Tags
    gepusht.
-4. **Commit-Historie:** Der erste Commit (`b4275dc`, „init“) ist einem fremden GitHub-Konto zugeordnet, weil eine
+2. **Commit-Historie:** Der erste Commit (`b4275dc`, „init“) ist einem fremden GitHub-Konto zugeordnet, weil eine
    Platzhalter-E-Mail verwendet wurde. Einige frühe Commits enthalten eine private E-Mail-Adresse. Eine Bereinigung
    der Historie (Neuschreiben und Force-Push) ist möglich, aber nicht entschieden.
+
+Keine GitHub-Workflows zu haben, ist kein offener Punkt, sondern entschieden ([ADR-0026](adr/0026-keine-github-workflows.md)).
 
 ## Ideen für später
 

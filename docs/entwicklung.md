@@ -45,10 +45,20 @@ stören; deshalb räumt jeder Schritt die eigenen Testdaten auf. Beispiel: Kurse
 ## Sichtprüfung im Browser
 
 Für Änderungen an der Oberfläche reicht ein Test nicht:
-1. Einen Demo-Server mit Beispieldaten starten, z. B. ein kleines Skript, das per Test-Client die Einrichtung
-   durchläuft und Buchungen direkt in die Datenbank schreibt.
+1. `python3 tools/demo.py` starten. Das Skript legt in einem temporären Ordner erfundene Daten für alle Bereiche an:
+   - 26 Monate Buchungen auf Giro, Kreditkarte und Bargeld, Umbuchungen und offene Buchungen
+   - Depot, Krypto mit Kursverlauf, Darlehen mit Immobilie, Bausparvertrag
+   - Budgets, Sparziel, Vertrag kurz vor Fristende, Planposten
+
+   Danach läuft der Server auf `http://127.0.0.1:8099`, Anmeldung `demo` / `geheim123`.
+   - `--port` wählt einen anderen Port.
+   - `--ordner … --behalten` behält die Daten.
+   - `--nur-daten` legt nur die Daten an.
+   - Ein nicht leerer fremder Ordner wird nie überschrieben.
 2. Mit Playwright Bildschirmfotos machen: Desktop 1360 px und Handy 390 px, hell und dunkel (`colorScheme`).
 3. Fehler in der Browser-Konsole sammeln.
+
+Kommt ein neuer Bereich dazu, bekommt er auch Beispieldaten in `tools/demo.py`.
 
 Dialoge (`confirm`) mit `page.on("dialog", d => d.accept())` bestätigen.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prüft das Repository vor dem Hochladen (läuft auch automatisch auf GitHub).
+"""Prüft das Repository vor dem Hochladen (lokal vor jedem Push; es gibt keine automatische Prüfung auf GitHub).
 
 Aufruf:  python tools/pruefen.py            # Konfiguration prüfen und Tests ausführen
          python tools/pruefen.py --ohne-tests

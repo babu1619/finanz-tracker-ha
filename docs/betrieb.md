@@ -16,8 +16,8 @@ Betrieb und die Gründe dahinter.
 | Daten | `/data/finanz.db`, `/data/secret_key`, `/data/tls/`, `/data/tmp/`, `/data/options.json` (von Home Assistant) |
 | Zertifikate | optional `/ssl` (gemappt, nur lesend genutzt) |
 
-Das Image wird auf dem Green gebaut. Vorgebaute Images über `ghcr.io` sind vorbereitet, aber abgeschaltet: die Zeile
-`image:` in `config.yaml` ist auskommentiert.
+Das Image wird beim Installieren und Aktualisieren auf dem Green gebaut. Es gibt bewusst keine vorgebauten Images
+und keine GitHub-Workflows; geprüft wird lokal mit `tools/pruefen.py` ([ADR-0026](adr/0026-keine-github-workflows.md)).
 
 ## Installation, Update
 

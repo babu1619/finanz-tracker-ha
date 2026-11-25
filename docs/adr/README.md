@@ -44,3 +44,4 @@ ist dabei teilweise nachträglich ergänzt: Nicht jede dort genannte Alternative
 | [0023](0023-oberflaechenzustand-je-geraet.md) | Zustand der Oberfläche je Gerät im Browser | angenommen | 2026-10-11 | 0.2.0 |
 | [0024](0024-auslieferung-und-arbeitsweise.md) | Auslieferung über GitHub und Arbeitsweise mit Claude | angenommen | 2026-10-11 | 0.2.1 |
 | [0025](0025-vertraege-als-datensaetze.md) | Verträge als eigene Datensätze | angenommen | 2026-10-15 | 0.6.0 |
+| [0026](0026-keine-github-workflows.md) | Keine GitHub-Workflows, Prüfung lokal | angenommen | 2026-11-25 | – |

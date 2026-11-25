@@ -7,61 +7,48 @@ Alle Daten liegen lokal in der SQLite-Datenbank des Add-ons und sind Teil der Ho
 
 Technische und fachliche Dokumentation mit allen Entscheidungen: [`docs/`](docs/README.md).
 
-## Was im Paket steckt
+## Was im Repository steckt
 
 ```
-finanz-tracker/
+finanz-tracker-ha/
 ├── repository.yaml          ← macht das GitHub-Repository zum Add-on-Repository
-├── tools/                   ← einrichten.py, pruefen.py, release.py (siehe „Werkzeuge“)
-├── .github/workflows/       ← automatische Prüfung und optional vorgebaute Images auf GitHub
 ├── README.md                ← diese Anleitung
+├── CLAUDE.md                ← Arbeitsregeln für Claude Code
+├── docs/                    ← technische und fachliche Dokumentation, Entscheidungen (ADRs)
+├── tools/                   ← einrichten.py, pruefen.py, release.py, demo.py (siehe „Werkzeuge“)
 └── finanz_tracker/          ← das Add-on
     ├── config.yaml          ← Add-on-Beschreibung (Name, Version, Port 8099)
     ├── build.yaml           ← Python-Basis-Image je Architektur
-    ├── Dockerfile
-    ├── requirements.txt     ← Flask, waitress, cryptography
+    ├── Dockerfile           ← inkl. Texterkennung (Tesseract) und PDF-Lesen (poppler)
+    ├── requirements.txt     ← Flask, waitress, cryptography, Pillow, tzdata
     ├── translations/        ← Beschriftung der Add-on-Optionen
     ├── DOCS.md, CHANGELOG.md, icon.png, logo.png
     ├── app/                 ← Programmcode, Vorlagen, Datenbank-Migrationen
-    └── tests/               ← automatische Tests und Beispiel-CSV-Dateien
+    └── tests/               ← automatische Tests mit Beispieldateien (CSV, PDF)
 ```
 
-## Installation über GitHub (empfohlen)
+Das Repository `https://github.com/babu1619/finanz-tracker-ha` ist öffentlich, weil Home Assistant
+Add-on-Repositories ohne Zugangsdaten lädt. Es enthält nur Programmcode, keine Finanzdaten.
 
-**1. Paket entpacken.** `finanz-tracker-v0.2.0.zip` auf dem PC entpacken. Du erhältst den Ordner `finanz-tracker`.
+## Installation
 
-**2. Repository auf GitHub anlegen.** Auf github.com › „New repository“, Name `finanz-tracker`,
-Sichtbarkeit **Public**. Home Assistant lädt Add-on-Repositories ohne Zugangsdaten; im Repository liegt nur
-Programmcode, keine Finanzdaten. Kein README, keine .gitignore anlegen lassen.
-
-**3. Dateien hochladen.** Im neuen Repository „uploading an existing file“ wählen und den **Inhalt** des Ordners
-`finanz-tracker` (also `repository.yaml`, `README.md`, `.gitignore` und den Ordner `finanz_tracker`) per Drag & Drop
-ins Browserfenster ziehen › „Commit changes“.
-Alternativ mit Git:
-```
-cd finanz-tracker
-git init && git add . && git commit -m "Finanz-Tracker 0.2.0"
-git branch -M main
-git remote add origin https://github.com/babu1619/finanz-tracker-ha.git
-git push -u origin main
-```
-
-**4. Repository in Home Assistant eintragen.** Einstellungen › Add-ons › „Add-on Store“ › Menü ⋮ oben rechts ›
+**1. Repository in Home Assistant eintragen.** Einstellungen › Add-ons › „Add-on Store“ › Menü ⋮ oben rechts ›
 „Repositories“ › `https://github.com/babu1619/finanz-tracker-ha` › „Hinzufügen“ › Schließen.
 
-**5. Add-on installieren.** Seite neu laden (ggf. Menü ⋮ › „Nach Updates suchen“). Unten erscheint der Abschnitt
+**2. Add-on installieren.** Seite neu laden (ggf. Menü ⋮ › „Nach Updates suchen“). Unten erscheint der Abschnitt
 „Finanz-Tracker“ › Add-on öffnen › „Installieren“. Das Add-on wird auf dem Green gebaut; das dauert beim ersten Mal
 einige Minuten, weil das Python-Basis-Image geladen wird.
 
-**6. Starten.** Im Reiter „Info“ „Beim Start starten“ und „Watchdog“ einschalten › „Starten“.
-Im Reiter „Protokoll“ sollte stehen: `Finanz-Tracker 0.2.0 startet mit HTTPS (eigenes-Zertifikat) auf Port 8099 …`.
+**3. Starten.** Im Reiter „Info“ „Beim Start starten“ und „Watchdog“ einschalten › „Starten“.
+Im Reiter „Protokoll“ sollte stehen: `Finanz-Tracker 0.9.0 startet mit HTTPS (eigenes-Zertifikat) auf Port 8080 …`
+(intern Port 8080, von außen erreichst du das Add-on über 8099).
 
-**7. App öffnen.** Im Browser `https://<IP-des-Green>:8099` aufrufen (die IP steht in Home Assistant unter
+**4. App öffnen.** Im Browser `https://<IP-des-Green>:8099` aufrufen (die IP steht in Home Assistant unter
 Einstellungen › System › Netzwerk; `https://homeassistant.local:8099` geht am PC meist auch). Beim allerersten Aufruf
 warnt der Browser, weil er das Zertifikat noch nicht kennt – siehe Abschnitt „HTTPS und App auf dem Handy“.
 Am PC kannst du die Warnung für die Ersteinrichtung einmal über „Erweitert › Weiter zu …“ überspringen.
 
-**8. Ersteinrichtung.** Benutzernamen, deinen Namen als Person und ein Passwort (mindestens 8 Zeichen) eingeben,
+**5. Ersteinrichtung.** Benutzernamen, deinen Namen als Person und ein Passwort (mindestens 8 Zeichen) eingeben,
 Startset an Kategorien angehakt lassen › „Einrichten“.
 
 ## Erste Schritte in der App
@@ -182,21 +169,19 @@ genug Regeln und Erfahrungswerte für eine weitgehend automatische Zuordnung.
 - **Abos & Verträge** (unter Mehr): erkannte wiederkehrende Zahlungen als Fixkosten oder Abo bestätigen.
 - **+ Bar** oben rechts: Bargeldausgaben in Sekunden erfassen (am besten ein Konto vom Typ „Bargeld“ anlegen).
 
-## Update auf 0.2.0
+## Updates
 
-1. Paket `finanz-tracker-v0.2.0.zip` entpacken.
-2. Im GitHub-Repository den Ordner `finanz_tracker` durch den neuen ersetzen: „Add file › Upload files“ und den
-   **Inhalt** des neuen Pakets (`finanz_tracker`, `README.md`, `repository.yaml`) hineinziehen › „Commit changes“.
-   Mit Git: Dateien im lokalen Ordner überschreiben, dann `git add -A && git commit -m "0.2.0" && git push`.
-3. Home Assistant › Einstellungen › Add-ons › Add-on Store › Menü ⋮ › „Nach Updates suchen“.
-4. Add-on „Finanz-Tracker“ öffnen › „Aktualisieren“. Das Add-on wird neu gebaut (einige Minuten).
-5. Reiter „Protokoll“: `Finanz-Tracker 0.2.0 startet mit HTTPS …`. Die Datenbank wird beim Start automatisch auf das
+Eine neue Version erscheint in Home Assistant, sobald sie im Repository liegt, also die Versionsnummer in
+`finanz_tracker/config.yaml` erhöht und gepusht ist.
+
+1. Vorher sichern: Verwaltung › „Datenbank herunterladen“ oder „Verschlüsselte Sicherung“ (oder ein Home-Assistant-Backup).
+2. Home Assistant › Einstellungen › Add-ons › Add-on Store › Menü ⋮ › „Nach Updates suchen“.
+3. Add-on „Finanz-Tracker“ öffnen › „Aktualisieren“. Das Add-on wird auf dem Green neu gebaut (einige Minuten).
+4. Reiter „Protokoll“: `Finanz-Tracker x.y.z startet mit HTTPS …`. Die Datenbank wird beim Start automatisch auf das
    neue Schema gebracht; alle Buchungen, Regeln und Kategorien bleiben erhalten.
-6. Die bisherige Adresse `http://…:8099` leitet automatisch auf `https://…:8099` um. Weiter mit dem nächsten Abschnitt.
+5. Im Browser bzw. in der App einmal neu laden.
 
-Vor dem Update empfiehlt sich eine Sicherung: Verwaltung › „Datenbank herunterladen“ (oder ein Home-Assistant-Backup).
-
-Spätere Updates laufen genauso: Dateien im Repository ersetzen, „Nach Updates suchen“, „Aktualisieren“.
+Alte Adressen mit `http://…:8099` leiten automatisch auf `https://…:8099` um.
 
 ## HTTPS und App auf dem Handy
 
@@ -244,20 +229,11 @@ Voraussetzungen am Windows-PC: [Git für Windows](https://git-scm.com/download/w
 python -m pip install pyyaml -r finanz_tracker\requirements.txt
 ```
 
-**Einmalig umstellen auf Git** (falls du die Dateien bisher über die GitHub-Webseite hochgeladen hast):
-1. Repository klonen, z. B. nach `C:\Projekte\finanz-tracker`:
-   `git clone https://github.com/babu1619/finanz-tracker-ha.git C:\Projekte\finanz-tracker`
-2. Den **Inhalt** dieses Pakets in den Ordner kopieren und Dateien überschreiben (auch die versteckten
-   `.gitattributes` und `.github`). Im Explorer: Ansicht › Einblenden › Ausgeblendete Elemente.
-3. Im Ordner die Eingabeaufforderung öffnen (Explorer-Adresszeile: `cmd`) und:
-   ```
-   python tools\einrichten.py babu1619
-   python tools\pruefen.py
-   git add -A
-   git commit -m "Version 0.2.1"
-   git push
-   ```
-4. Home Assistant › Add-on Store › ⋮ › „Nach Updates suchen“ › Finanz-Tracker „Aktualisieren“.
+**Repository am PC** (einmalig), z. B. nach `C:\Projekte\finanz-tracker`:
+```
+git clone https://github.com/babu1619/finanz-tracker-ha.git C:\Projekte\finanz-tracker
+```
+Vor eigenen Änderungen immer zuerst `git pull`, weil Claude Änderungen direkt ins Repository pusht.
 
 **Was die Skripte tun**
 
@@ -265,21 +241,15 @@ python -m pip install pyyaml -r finanz_tracker\requirements.txt
 | --- | --- |
 | `python tools\einrichten.py NAME` | trägt deinen GitHub-Namen in `repository.yaml`, `config.yaml` und README ein (einmalig) |
 | `python tools\pruefen.py` | prüft Konfiguration, Übersetzungen, Python-Code, Nummerierung der Datenbank-Migrationen, gleiche Version in `config.yaml` und `app/config.py`, Änderungsprotokoll – und führt alle automatischen Tests aus (`--ohne-tests` überspringt sie) |
+| `python tools\demo.py` | startet eine Demo mit erfundenen Beispieldaten auf `http://127.0.0.1:8099` (Anmeldung `demo` / `geheim123`), z. B. zum Ausprobieren neuer Funktionen; die Daten liegen in einem temporären Ordner und verschwinden beim Beenden |
 | `python tools\release.py patch "Text"` | erhöht die Version (0.2.1 → 0.2.2, `minor` → 0.3.0), trägt den Text ins Änderungsprotokoll ein, prüft, committet mit Tag und lädt hoch. Schlägt die Prüfung fehl, wird nichts committet und die Version bleibt unverändert. |
 
-**Später, wenn Claude dir ein neues Paket mit bereits erhöhter Version liefert:** Dateien in den Ordner kopieren, dann
-`python tools\pruefen.py`, `git add -A`, `git commit -m "Version x.y.z"`, `git push` – nicht `release.py`, sonst würde
-die Version ein zweites Mal erhöht. Für eigene kleine Änderungen dagegen `release.py`.
+**Wer pusht was:** Claude erhöht die Version selbst, prüft mit `tools/pruefen.py` und pusht nach Rückfrage direkt
+ins Repository. Für eigene kleine Änderungen nimmst du `release.py`. Eine von Claude bereits erhöhte Version nie
+zusätzlich mit `release.py` veröffentlichen, sonst wird sie ein zweites Mal erhöht.
 
-**Auf GitHub** läuft bei jedem Hochladen unter „Actions“ die Prüfung „Prüfen“: Tests, Bau des Images und ein Probestart
-des Add-ons mit HTTPS. Ein grüner Haken heißt, das Update kann in Home Assistant installiert werden. Sie warnt auch,
-wenn Add-on-Dateien geändert wurden, die Version aber nicht erhöht ist (dann zeigt Home Assistant kein Update an).
-
-**Optional: vorgebaute Images** – der Green muss das Add-on dann nicht mehr selbst bauen:
-1. In `finanz_tracker/config.yaml` bei `# image: "ghcr.io/…/finanz-tracker-{arch}"` das `# ` entfernen.
-2. `python tools\release.py patch "Vorgebaute Images"`. Unter Actions läuft „Images bauen“ (5–10 Minuten).
-3. Einmalig auf GitHub › Profil › Packages › `finanz-tracker-ha-aarch64` › Package settings › Change visibility › **Public**.
-4. Erst wenn „Images bauen“ fertig ist, in Home Assistant aktualisieren.
+**Keine automatische Prüfung auf GitHub:** Es gibt bewusst keine GitHub-Workflows. Geprüft wird vor jedem Push lokal
+mit `python tools\pruefen.py`. Das Image baut Home Assistant beim Installieren bzw. Aktualisieren auf dem Green.
 
 **Nie ändern:** `slug: finanz_tracker` in `config.yaml` (sonst hält Home Assistant das Add-on für ein neues ohne Daten).
 Das Add-on nie deinstallieren, um ein Problem zu lösen – das löscht die Datenbank.
@@ -315,10 +285,10 @@ Home-Assistant-Backups enthalten das Add-on samt Datenbank. Zusätzlich in der V
 ## Ohne GitHub installieren (lokales Add-on)
 
 1. In Home Assistant das Add-on „Samba share“ installieren und starten.
-2. Am PC die Freigabe `\\homeassistant.local\addons` öffnen und dort den Ordner `finanz_tracker` (aus dem Paket)
-   hineinkopieren.
+2. Am PC die Freigabe `\\homeassistant.local\addons` öffnen und dort den Ordner `finanz_tracker` (aus dem
+   Repository) hineinkopieren.
 3. Add-on Store › Menü ⋮ › „Nach Updates suchen“ › unter „Lokale Add-ons“ erscheint der Finanz-Tracker ›
-   Installieren, dann weiter ab Schritt 6.
+   Installieren, dann weiter ab Schritt 3 der Installation.
 
 ## Entwicklung und Tests
 
@@ -326,5 +296,9 @@ Home-Assistant-Backups enthalten das Add-on samt Datenbank. Zusätzlich in der V
 cd finanz_tracker
 pip install -r requirements.txt
 python -m unittest discover -s tests -v     # automatische Tests
-DATA_DIR=./data python -m app                # lokal starten: http://localhost:8080
+HTTPS=0 DATA_DIR=./data python -m app        # lokal starten: http://localhost:8080
 ```
+
+Ohne `HTTPS=0` startet die App auch lokal mit HTTPS und eigener Heim-CA (`https://localhost:8080`). Für PDF- und
+Screenshot-Import werden lokal zusätzlich `tesseract` (mit deutschen Sprachdaten) und `pdftotext` (poppler) gebraucht.
+Mehr in [`docs/entwicklung.md`](docs/entwicklung.md).

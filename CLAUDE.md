@@ -9,6 +9,15 @@ Deutsch, teils per Spracheingabe; Tippfehler und Umgangssprache sind normal. Ant
 Docstrings, Commit-Nachrichten und Dokumentation sind auf Deutsch. Auch Bezeichner sind deutsch (`buchung`,
 `konto_id`, `berechne`), passend zum bestehenden Code.
 
+## Start einer Sitzung
+
+1. Repository einbinden bzw. klonen: `babu1619/finanz-tracker-ha`. Diese Datei gilt erst, wenn im Repository
+   gearbeitet wird.
+2. `git fetch origin main && git status -sb`. Steht der lokale Stand hinter `origin/main`, erst aktualisieren.
+3. Bei Aufträgen zur Wunschliste die Sammlung `wuensche` lesen (`db_list`). Gemeint sind die Einträge mit
+   `status: offen`.
+4. Für Arbeiten an einem Bereich zuerst die passende Datei unter `docs/funktionen/` lesen.
+
 ## Maßgebliche Quellen
 
 Bei Widerspruch gilt der Code, dann `docs/`, dann das Gedächtnis eines Gesprächs.
@@ -25,7 +34,7 @@ Bei Widerspruch gilt der Code, dann `docs/`, dann das Gedächtnis eines Gespräc
 | Offene Punkte, Abweichungen | `docs/offene-punkte.md` |
 | Änderungen je Version | `finanz_tracker/CHANGELOG.md` |
 | Installation für Benjamin | `README.md` |
-| Anforderungen | Wunschliste: Artefakt `https://claude.ai/artifact/HRqtB7zQjouTtD5TUtonMP`, Datenbank-Sammlung `wuensche` (Felder `titel`, `bereich`, `prio`, `beschreibung`, `status` ∈ offen/umgesetzt/zurueckgestellt, `version`, `erstellt`, `geaendert`) |
+| Anforderungen | Wunschliste: Artefakt `https://claude.ai/artifact/HRqtB7zQjouTtD5TUtonMP`, Kennung (slug) `850a319f-714c-4adc-bbac-8f23dd6ef7b2` für die Datenbank-Werkzeuge (`db_list`, `db_write`), Sammlung `wuensche` (Felder `titel`, `bereich`, `prio`, `beschreibung`, `status` ∈ offen/umgesetzt/zurueckgestellt, `version`, `erstellt`, `geaendert`) |
 
 ## Arbeitsweise (verbindlich)
 
@@ -92,12 +101,15 @@ git fetch origin main && git status -sb
 cd finanz_tracker && python3 -m unittest discover -s tests    # alle Tests
 python3 tools/pruefen.py                                      # aus dem Hauptordner: Konfiguration + Tests
 HTTPS=0 DATA_DIR=./data python3 -m app                        # lokal starten, http://localhost:8080
+python3 tools/demo.py                                         # Demo mit erfundenen Daten, http://127.0.0.1:8099 (demo / geheim123)
 ```
 
-- **Sichtprüfung:** Demo-Server mit Beispieldaten (Einrichtung per Test-Client, Buchungen per SQL), Screenshots mit
-  Playwright. Chromium ist in der Cloud-Umgebung vorinstalliert, `require('playwright')` funktioniert ohne
-  Installation.
-- **Demo-Skripte** gehören nicht ins Repository; sie liegen in einem Ordner außerhalb (z. B. `/home/claude/pruef`).
+- **Sichtprüfung:** `tools/demo.py` legt erfundene Beispieldaten für alle Bereiche an und startet den Server ohne
+  HTTPS. Screenshots mit Playwright: Desktop 1360 px und Handy 390 px, hell und dunkel (`colorScheme`). Fehler der
+  Browser-Konsole mitschreiben. Chromium ist in der Cloud-Umgebung vorinstalliert; `require('playwright')`
+  funktioniert ohne Installation. Neue Bereiche bekommen auch Beispieldaten in `tools/demo.py`.
+- **Eigene Prüfskripte** (Playwright-Abläufe, Screenshots) liegen außerhalb des Repositorys, z. B. in
+  `/home/claude/pruef`. Ins Repository kommen nur erfundene Daten, nie echte Kontodaten.
 - **In der Cloud-Umgebung** sind npm- und pip-Downloads oft gesperrt. Keine Bibliotheken nachladen, sondern mit dem
   Vorhandenen bauen.
 
@@ -114,11 +126,11 @@ Stand 2026-11-25, Version 0.9.0. Details in den ADRs.
 - **Dashboard** im Stil von Sure, alle Bereiche einklappbar (ADR-0019).
 - **Planung:** Kontoauswahl und Überschuss je Benutzer, Posten gemeinsam (ADR-0021).
 - **Belege** gehören nicht in den Finanz-Tracker, sondern ins Familienarchiv (ADR-0017).
+- **Keine GitHub-Workflows** und keine vorgebauten Images: Prüfung lokal mit `tools/pruefen.py` vor jedem Push, das
+  Image baut Home Assistant auf dem Green (ADR-0026).
 
 ## Offene Punkte
 
 Siehe `docs/offene-punkte.md`, unter anderem:
-- `.github/workflows` fehlen, obwohl README und `tools/pruefen.py` sie beschreiben
-- README-Installationsteil nennt noch 0.2.0
 - keine Versions-Tags
 - Commit-Historie enthält einen fremd zugeordneten Commit und eine private E-Mail-Adresse; Bereinigung nicht entschieden

@@ -24,5 +24,5 @@ sollen nachvollziehbar und kontrolliert ins Repository kommen.
 
 ## Folgen
 
-- Ohne Workflows auf GitHub (siehe Offene Punkte) ist `tools/pruefen.py` die einzige Prüfung.
+- Es gibt keine GitHub-Workflows; `tools/pruefen.py` ist die einzige Prüfung ([ADR-0026](0026-keine-github-workflows.md)).
 - Ein Push auf `main` ist sofort als Update in Home Assistant sichtbar.

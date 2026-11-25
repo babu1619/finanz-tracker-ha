@@ -47,7 +47,7 @@ finanz-tracker-ha/
 ├── README.md                 Installation und Bedienung (für Benjamin)
 ├── repository.yaml           macht das Repository zum Add-on-Repository
 ├── docs/                     diese Dokumentation, ADRs
-├── tools/                    einrichten.py, pruefen.py, release.py
+├── tools/                    einrichten.py, pruefen.py, release.py, demo.py
 └── finanz_tracker/           das Add-on
     ├── config.yaml           Add-on-Beschreibung, Version, Optionen, Port 8099 → 8080
     ├── build.yaml, Dockerfile, requirements.txt
