@@ -5,6 +5,8 @@ Die App ist eine eigenständige, verschlüsselte Webseite (https, Port 8099), di
 Home Assistant dient nur als Host.
 Alle Daten liegen lokal in der SQLite-Datenbank des Add-ons und sind Teil der Home-Assistant-Backups.
 
+Technische und fachliche Dokumentation mit allen Entscheidungen: [`docs/`](docs/README.md).
+
 ## Was im Paket steckt
 
 ```
